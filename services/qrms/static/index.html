@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QRMS - Quantum Resistance Model System</title>
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a24;
+            --accent-blue: #3b82f6;
+            --accent-purple: #8b5cf6;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --accent-red: #ef4444;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border-color: #2d2d3a;
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 1.5rem;
+            background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .header-subtitle {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+        
+        .header-controls { display: flex; gap: 1rem; align-items: center; }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+        
+        .btn:hover { background: var(--accent-blue); border-color: var(--accent-blue); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-danger { border-color: var(--accent-red); }
+        .btn-danger:hover { background: var(--accent-red); }
+        .btn-warning { border-color: var(--accent-yellow); }
+        .btn-warning:hover { background: var(--accent-yellow); color: var(--bg-primary); }
+        
+        .status-indicator { display: flex; align-items: center; gap: 0.5rem; }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: var(--accent-red);
+        }
+        
+        .status-dot.running {
+            background: var(--accent-green);
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.connecting {
+            background: var(--accent-yellow);
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(0.9); }
+        }
+        
+        .main {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            padding: 1rem;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+        
+        .panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .panel-header {
+            padding: 0.75rem 1rem;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .panel-title {
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary);
+        }
+        
+        .panel-badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            background: var(--bg-primary);
+        }
+        
+        .panel-content { padding: 1rem; }
+        
+        .risk-meter { margin-bottom: 1.5rem; }
+        
+        .risk-score {
+            font-size: 3rem;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 0.5rem;
+            transition: color 0.3s;
+        }
+        
+        .risk-score.low { color: var(--accent-green); }
+        .risk-score.medium { color: var(--accent-yellow); }
+        .risk-score.high { color: var(--accent-red); }
+        
+        .risk-bar {
+            height: 8px;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 0.5rem;
+            position: relative;
+        }
+        
+        .risk-bar-fill {
+            height: 100%;
+            transition: width 0.5s, background 0.5s;
+            border-radius: 4px;
+        }
+        
+        .risk-markers {
+            position: absolute;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        .risk-marker {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            width: 2px;
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .risk-label {
+            text-align: center;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            padding: 0.5rem;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            margin-top: 0.5rem;
+        }
+        
+        .risk-thresholds {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+        
+        .indicators-list { max-height: 200px; overflow-y: auto; }
+        
+        .indicator-item {
+            padding: 0.5rem;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+            font-size: 0.8rem;
+            border-left: 3px solid var(--accent-purple);
+        }
+        
+        .indicator-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.25rem;
+        }
+        
+        .indicator-category { color: var(--accent-purple); font-weight: 500; }
+        .indicator-source { color: var(--text-secondary); }
+        .indicator-desc { color: var(--text-primary); }
+        
+        .indicator-severity {
+            display: inline-block;
+            width: 60px;
+            height: 4px;
+            background: var(--bg-primary);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-left: 0.5rem;
+            vertical-align: middle;
+        }
+        
+        .indicator-severity-fill { height: 100%; background: var(--accent-yellow); }
+        
+        .algorithm-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+        
+        .algorithm-group h4 {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .algorithm-item {
+            padding: 0.5rem;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            margin-bottom: 0.25rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .algorithm-name { font-size: 0.875rem; }
+        
+        .algorithm-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+        }
+        
+        .rotation-status {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            border-left: 3px solid var(--accent-blue);
+        }
+        
+        .rotation-status.pending { border-left-color: var(--accent-yellow); }
+        .rotation-status.emergency {
+            border-left-color: var(--accent-red);
+            animation: flash 1s infinite;
+        }
+        
+        @keyframes flash { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        
+        .signature-display { margin-top: 1rem; }
+        
+        .sig-item {
+            background: var(--bg-tertiary);
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+        }
+        
+        .sig-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            margin-bottom: 0.25rem;
+        }
+        
+        .sig-algo { color: var(--accent-blue); }
+        .sig-size { color: var(--text-secondary); }
+        
+        .sig-value {
+            font-family: monospace;
+            font-size: 0.7rem;
+            color: var(--accent-green);
+            word-break: break-all;
+        }
+        
+        .sequencer-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1rem; }
+        
+        .stat-box {
+            background: var(--bg-tertiary);
+            padding: 1rem;
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        .stat-value { font-size: 1.5rem; font-weight: bold; color: var(--accent-blue); }
+        .stat-label { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.25rem; }
+        
+        .tee-info {
+            background: var(--bg-tertiary);
+            padding: 0.75rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+        
+        .tee-info-row { display: flex; justify-content: space-between; margin-bottom: 0.25rem; }
+        .tee-info-label { color: var(--text-secondary); }
+        .tee-info-value { font-family: monospace; color: var(--accent-green); }
+        
+        .chain-height {
+            font-size: 2rem;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 1rem;
+            color: var(--accent-blue);
+        }
+        
+        .blocks-list { max-height: 250px; overflow-y: auto; }
+        
+        .block-item {
+            padding: 0.75rem;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+            border-left: 3px solid var(--accent-blue);
+        }
+        
+        .block-header { display: flex; justify-content: space-between; margin-bottom: 0.5rem; }
+        .block-height { font-weight: bold; }
+        .block-time { color: var(--text-secondary); font-size: 0.8rem; }
+        .block-details { font-size: 0.8rem; color: var(--text-secondary); }
+        .block-id { font-family: monospace; color: var(--accent-purple); }
+        
+        .event-log { grid-column: span 2; }
+        
+        .log-list { max-height: 200px; overflow-y: auto; font-size: 0.8rem; }
+        
+        .log-item {
+            padding: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            gap: 1rem;
+        }
+        
+        .log-time { color: var(--text-secondary); white-space: nowrap; }
+        
+        .log-type {
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+        }
+        
+        .log-type.qrm { background: var(--accent-purple); color: white; }
+        .log-type.tx { background: var(--accent-blue); color: white; }
+        .log-type.batch { background: var(--accent-green); color: white; }
+        .log-type.rotation { background: var(--accent-red); color: white; }
+        .log-type.system { background: var(--bg-tertiary); color: var(--text-secondary); }
+        
+        .log-message { flex: 1; }
+        
+        @media (max-width: 1200px) {
+            .main { grid-template-columns: 1fr; }
+            .event-log { grid-column: span 1; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div>
+            <h1>QRMS - Quantum Resistance Model System</h1>
+            <div class="header-subtitle">Rust Backend | Low-Fidelity Prototype</div>
+        </div>
+        <div class="header-controls">
+            <div class="status-indicator">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">Disconnected</span>
+            </div>
+            <button class="btn" id="startBtn" onclick="startSimulation()">Start</button>
+            <button class="btn btn-danger" id="stopBtn" onclick="stopSimulation()" disabled>Stop</button>
+            <button class="btn btn-warning" onclick="injectHighThreat()">Inject High Threat</button>
+        </div>
+    </header>
+    
+    <main class="main">
+        <!-- QRM Panel -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Quantum Resistance Monitor</span>
+                <span class="panel-badge" id="qrmIndicatorCount">0 indicators</span>
+            </div>
+            <div class="panel-content">
+                <div class="risk-meter">
+                    <div class="risk-score low" id="riskScore">0</div>
+                    <div class="risk-bar">
+                        <div class="risk-bar-fill" id="riskBarFill" style="width: 0%; background: var(--accent-green);"></div>
+                        <div class="risk-markers">
+                            <div class="risk-marker" style="left: 60%;"></div>
+                            <div class="risk-marker" style="left: 90%;"></div>
+                        </div>
+                    </div>
+                    <div class="risk-thresholds">
+                        <span>0</span>
+                        <span style="color: var(--accent-yellow);">6000 (Schedule)</span>
+                        <span style="color: var(--accent-red);">9000 (Emergency)</span>
+                        <span>10000</span>
+                    </div>
+                    <div class="risk-label" id="riskRecommendation">Continue</div>
+                </div>
+                
+                <h4 style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Recent Threat Indicators</h4>
+                <div class="indicators-list" id="indicatorsList"></div>
+            </div>
+        </div>
+        
+        <!-- APQC Panel -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Adaptive PQC Layer</span>
+                <span class="panel-badge">Dual Redundant</span>
+            </div>
+            <div class="panel-content">
+                <div class="algorithm-grid">
+                    <div class="algorithm-group">
+                        <h4>Signature Algorithms</h4>
+                        <div class="algorithm-item">
+                            <span class="algorithm-name">ML-DSA-87</span>
+                            <span class="algorithm-status"></span>
+                        </div>
+                        <div class="algorithm-item">
+                            <span class="algorithm-name">SLH-DSA-256s</span>
+                            <span class="algorithm-status"></span>
+                        </div>
+                    </div>
+                    <div class="algorithm-group">
+                        <h4>KEM Algorithms</h4>
+                        <div class="algorithm-item">
+                            <span class="algorithm-name">ML-KEM-1024</span>
+                            <span class="algorithm-status"></span>
+                        </div>
+                        <div class="algorithm-item">
+                            <span class="algorithm-name">HQC-256</span>
+                            <span class="algorithm-status"></span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="rotation-status" id="rotationStatus">
+                    <strong>Rotation Status:</strong> Idle
+                </div>
+                
+                <div class="signature-display">
+                    <h4 style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Latest Dual Signature</h4>
+                    <div class="sig-item">
+                        <div class="sig-header">
+                            <span class="sig-algo">ML-DSA-87</span>
+                            <span class="sig-size">4,595 bytes</span>
+                        </div>
+                        <div class="sig-value" id="mlDsaSig">--</div>
+                    </div>
+                    <div class="sig-item">
+                        <div class="sig-header">
+                            <span class="sig-algo">SLH-DSA-256s</span>
+                            <span class="sig-size">29,792 bytes</span>
+                        </div>
+                        <div class="sig-value" id="slhDsaSig">--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- TEE Sequencer Panel -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">TEE Sequencer</span>
+                <span class="panel-badge">SGX Enclave</span>
+            </div>
+            <div class="panel-content">
+                <div class="sequencer-stats">
+                    <div class="stat-box">
+                        <div class="stat-value" id="mempoolSize">0</div>
+                        <div class="stat-label">Mempool</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="orderedQueue">0</div>
+                        <div class="stat-label">Ordered</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="batchCount">0</div>
+                        <div class="stat-label">Batches</div>
+                    </div>
+                </div>
+                
+                <div class="tee-info">
+                    <div class="tee-info-row">
+                        <span class="tee-info-label">Platform:</span>
+                        <span class="tee-info-value">Intel SGX</span>
+                    </div>
+                    <div class="tee-info-row">
+                        <span class="tee-info-label">MRENCLAVE:</span>
+                        <span class="tee-info-value" id="mrenclave">--</span>
+                    </div>
+                    <div class="tee-info-row">
+                        <span class="tee-info-label">Attestation:</span>
+                        <span class="tee-info-value" style="color: var(--accent-green);">PQC-Signed</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Chain Panel -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="panel-title">Chain State</span>
+                <span class="panel-badge">Substrate SDK</span>
+            </div>
+            <div class="panel-content">
+                <div class="chain-height">
+                    Block #<span id="chainHeight">0</span>
+                </div>
+                
+                <h4 style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Recent Blocks</h4>
+                <div class="blocks-list" id="blocksList"></div>
+            </div>
+        </div>
+        
+        <!-- Event Log -->
+        <div class="panel event-log">
+            <div class="panel-header">
+                <span class="panel-title">Event Log</span>
+                <button class="btn" onclick="clearLog()" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;">Clear</button>
+            </div>
+            <div class="panel-content">
+                <div class="log-list" id="logList"></div>
+            </div>
+        </div>
+    </main>
+    
+    <script>
+        let ws = null;
+        let isRunning = false;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 10;
+        
+        function connect() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+            
+            document.getElementById('statusDot').className = 'status-dot connecting';
+            document.getElementById('statusText').textContent = 'Connecting...';
+            
+            ws.onopen = () => {
+                reconnectAttempts = 0;
+                document.getElementById('statusDot').className = 'status-dot';
+                document.getElementById('statusText').textContent = 'Connected';
+                addLog('system', 'Connected to QRMS Rust backend');
+                fetchStatus();
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleEvent(data);
+                } catch (e) {
+                    console.error('Failed to parse message:', e);
+                }
+            };
+            
+            ws.onclose = () => {
+                document.getElementById('statusDot').className = 'status-dot';
+                document.getElementById('statusText').textContent = 'Disconnected';
+                
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    setTimeout(connect, 2000);
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+        }
+        
+        function handleEvent(data) {
+            switch (data.type) {
+                case 'qrm_update':
+                    updateQRM(data.data);
+                    addLog('qrm', `Risk: ${data.data.risk.score} - ${data.data.indicator.description}`);
+                    break;
+                case 'tx_submitted':
+                    fetchStatus();
+                    break;
+                case 'txs_ordered':
+                    addLog('tx', `Ordered ${data.data.count} transactions`);
+                    fetchStatus();
+                    break;
+                case 'batch_created':
+                    updateBatch(data.data);
+                    addLog('batch', `Batch ${data.data.batch.batch_id} committed - ${data.data.batch.transactions.length} txs`);
+                    break;
+                case 'rotation_scheduled':
+                    updateRotationStatus('pending', data.data.effective_block);
+                    addLog('rotation', `Rotation scheduled for block ${data.data.effective_block}`);
+                    break;
+                case 'rotation_executed':
+                    updateRotationStatus('executed');
+                    addLog('rotation', `${data.data.rotation_type} rotation executed`);
+                    break;
+                case 'simulation_started':
+                    isRunning = true;
+                    updateControls();
+                    addLog('system', 'Simulation started');
+                    break;
+                case 'simulation_stopped':
+                    isRunning = false;
+                    updateControls();
+                    addLog('system', 'Simulation stopped');
+                    break;
+            }
+        }
+        
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                
+                document.getElementById('mempoolSize').textContent = data.sequencer.mempool_size;
+                document.getElementById('orderedQueue').textContent = data.sequencer.ordered_queue;
+                document.getElementById('batchCount').textContent = data.sequencer.batch_count;
+                document.getElementById('mrenclave').textContent = data.sequencer.mrenclave;
+                document.getElementById('chainHeight').textContent = data.chain.height;
+                document.getElementById('qrmIndicatorCount').textContent = `${data.qrm.indicator_count} indicators`;
+            } catch (e) {
+                console.error('Failed to fetch status:', e);
+            }
+        }
+        
+        function startSimulation() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ command: 'start' }));
+            } else {
+                fetch('/api/simulation/start', { method: 'POST' });
+            }
+        }
+        
+        function stopSimulation() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ command: 'stop' }));
+            } else {
+                fetch('/api/simulation/stop', { method: 'POST' });
+            }
+        }
+        
+        function injectHighThreat() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ command: 'inject_high' }));
+            } else {
+                fetch('/api/inject_high_threat', { method: 'POST' });
+            }
+            addLog('qrm', 'Injected high severity threats');
+        }
+        
+        function updateControls() {
+            const statusDot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            
+            if (isRunning) {
+                statusDot.classList.add('running');
+                statusText.textContent = 'Running';
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+            } else {
+                statusDot.classList.remove('running');
+                statusText.textContent = 'Connected';
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+        }
+        
+        function updateQRM(data) {
+            const score = data.risk.score;
+            const riskScore = document.getElementById('riskScore');
+            const riskBarFill = document.getElementById('riskBarFill');
+            const riskRecommendation = document.getElementById('riskRecommendation');
+            
+            riskScore.textContent = score;
+            riskBarFill.style.width = `${score / 100}%`;
+            
+            if (score < 3000) {
+                riskScore.className = 'risk-score low';
+                riskBarFill.style.background = 'var(--accent-green)';
+            } else if (score < 6000) {
+                riskScore.className = 'risk-score medium';
+                riskBarFill.style.background = 'var(--accent-yellow)';
+            } else {
+                riskScore.className = 'risk-score high';
+                riskBarFill.style.background = 'var(--accent-red)';
+            }
+            
+            const recMap = {
+                'Continue': 'Continue Normal Operation',
+                'MonitorClosely': 'Monitor Closely',
+                'ScheduleRotation': 'Schedule Algorithm Rotation',
+                'EmergencyRotation': 'EMERGENCY ROTATION REQUIRED'
+            };
+            riskRecommendation.textContent = recMap[data.risk.recommendation] || data.risk.recommendation;
+            
+            // Add indicator
+            const list = document.getElementById('indicatorsList');
+            const ind = data.indicator;
+            const item = document.createElement('div');
+            item.className = 'indicator-item';
+            
+            const categoryDisplay = ind.category.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+            
+            item.innerHTML = `
+                <div class="indicator-header">
+                    <span class="indicator-category">${categoryDisplay}</span>
+                    <span class="indicator-source">${ind.source}</span>
+                </div>
+                <div class="indicator-desc">
+                    ${ind.description}
+                    <span class="indicator-severity">
+                        <span class="indicator-severity-fill" style="width: ${ind.severity * 100}%"></span>
+                    </span>
+                </div>
+            `;
+            list.insertBefore(item, list.firstChild);
+            
+            while (list.children.length > 10) {
+                list.removeChild(list.lastChild);
+            }
+        }
+        
+        function updateBatch(data) {
+            const batch = data.batch;
+            const block = data.block;
+            
+            document.getElementById('mlDsaSig').textContent = batch.ml_dsa_sig;
+            document.getElementById('slhDsaSig').textContent = batch.slh_dsa_sig;
+            document.getElementById('chainHeight').textContent = block.height;
+            
+            const list = document.getElementById('blocksList');
+            const item = document.createElement('div');
+            item.className = 'block-item';
+            item.innerHTML = `
+                <div class="block-header">
+                    <span class="block-height">Block #${block.height}</span>
+                    <span class="block-time">${new Date(batch.timestamp).toLocaleTimeString()}</span>
+                </div>
+                <div class="block-details">
+                    <span class="block-id">${batch.batch_id}</span> | 
+                    ${block.tx_count} txs | 
+                    Risk: ${block.risk_score}
+                </div>
+            `;
+            list.insertBefore(item, list.firstChild);
+            
+            while (list.children.length > 10) {
+                list.removeChild(list.lastChild);
+            }
+            
+            fetchStatus();
+        }
+        
+        function updateRotationStatus(status, block = null) {
+            const el = document.getElementById('rotationStatus');
+            
+            if (status === 'pending') {
+                el.className = 'rotation-status pending';
+                el.innerHTML = `<strong>Rotation Status:</strong> Pending - Block ${block}`;
+            } else if (status === 'executed') {
+                el.className = 'rotation-status emergency';
+                el.innerHTML = `<strong>Rotation Status:</strong> EXECUTED`;
+                setTimeout(() => {
+                    el.className = 'rotation-status';
+                    el.innerHTML = `<strong>Rotation Status:</strong> Idle`;
+                }, 5000);
+            } else {
+                el.className = 'rotation-status';
+                el.innerHTML = `<strong>Rotation Status:</strong> Idle`;
+            }
+        }
+        
+        function addLog(type, message) {
+            const list = document.getElementById('logList');
+            const item = document.createElement('div');
+            item.className = 'log-item';
+            
+            const time = new Date().toLocaleTimeString();
+            
+            item.innerHTML = `
+                <span class="log-time">${time}</span>
+                <span class="log-type ${type}">${type.toUpperCase()}</span>
+                <span class="log-message">${message}</span>
+            `;
+            
+            list.insertBefore(item, list.firstChild);
+            
+            while (list.children.length > 50) {
+                list.removeChild(list.lastChild);
+            }
+        }
+        
+        function clearLog() {
+            document.getElementById('logList').innerHTML = '';
+        }
+        
+        // Initialize
+        connect();
+        fetchStatus();
+    </script>
+</body>
+</html>

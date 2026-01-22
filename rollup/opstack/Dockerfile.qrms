@@ -1,0 +1,15 @@
+FROM rust:latest AS builder
+WORKDIR /build
+COPY qrms-rust/Cargo.toml ./
+COPY qrms-rust/src ./src
+COPY qrms-rust/static ./static
+RUN cargo build --release --bin qrms
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=builder /build/target/release/qrms /app/qrms
+COPY --from=builder /build/static /app/static
+RUN mkdir -p /data
+EXPOSE 5050 9090
+CMD ["/app/qrms"]

@@ -1,0 +1,73 @@
+[package]
+name = "qrms"
+version = "0.1.0"
+edition = "2021"
+description = "Quantum Resistance Model System - Low Fidelity Prototype"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Web framework
+axum = { version = "0.7", features = ["ws", "macros"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["fs", "cors"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Crypto
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.8"
+
+# Post-Quantum Cryptography
+pqcrypto-dilithium = "0.5"
+pqcrypto-sphincsplus = "0.5"
+pqcrypto-traits = "0.3"
+# Temporarily disabled due to AVX2 compilation issues
+# pqcrypto-kyber = "0.5"
+# pqcrypto-hqc = "0.2"
+
+# ECDSA for hybrid signatures
+k256 = "0.13"
+ecdsa = { version = "0.17.0-rc.13", package = "ecdsa" }
+signature = "2.2"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Async utilities
+futures = "0.3"
+futures-util = "0.3"
+tokio-stream = "0.1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# UUID for IDs
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# TUI (for CLI)
+ratatui = "0.28"
+crossterm = "0.28"
+
+# WebSocket client (for CLI)
+tokio-tungstenite = "0.24"
+
+# HTTP client (for CLI)
+reqwest = { version = "0.12", features = ["json"] }
+
+[[bin]]
+name = "qrms"
+path = "src/main.rs"
+
+[[bin]]
+name = "qrms-cli"
+path = "src/bin/qrms-cli.rs"
+
+[profile.release]
+opt-level = 3
+lto = true

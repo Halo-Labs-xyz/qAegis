@@ -1,0 +1,73 @@
+# Environment
+.env
+.env.local
+*.env
+!*.env.example
+
+# Rust
+target/
+**/target/
+Cargo.lock
+**/*.rs.bk
+
+# Node
+node_modules/
+package-lock.json
+yarn.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+
+# Build artifacts
+dist/
+build/
+*.o
+*.a
+*.so
+*.dylib
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage/
+*.gcov
+
+# Docker
+.dockerignore
+
+# Deployment
+deployer/
+*.json.bak
+*.toml.bak
+
+# Keys and secrets
+*.key
+*.pem
+*.p12
+*.jks
+secrets/
+keys/
+
+# Temporary
+tmp/
+temp/
+*.tmp
