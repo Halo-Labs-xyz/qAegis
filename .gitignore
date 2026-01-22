@@ -71,3 +71,6 @@ keys/
 tmp/
 temp/
 *.tmp
+
+# Documentation build artifacts
+_site/
