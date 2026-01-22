@@ -25,11 +25,17 @@ cargo doc --no-deps --all-features
 Build the complete documentation site:
 
 ```bash
+# Install markdown converter (if not already installed)
+pip install markdown
+
+# Build documentation
 ./scripts/docs/build-docs.sh
 cd _site
 python3 -m http.server 8000
 # Open http://localhost:8000 in browser
 ```
+
+**Note:** The build script converts all markdown files to HTML automatically. If the `markdown` Python library is not installed, markdown files will be copied as-is.
 
 ## GitHub Pages
 
@@ -54,8 +60,9 @@ The deployed site includes:
   - APQC Module: `rust/qrms/apqc/index.html`
   - QRM Module: `rust/qrms/qrm/index.html`
   - Crypto Module: `rust/qrms/crypto/index.html`
-- Architecture documentation (markdown files)
-- Project documentation (README, CONTRIBUTING, etc.)
+- Architecture documentation (converted from markdown to HTML)
+  - All `.md` files in `docs/` are converted to `.html`
+- Project documentation (README, CONTRIBUTING, etc., converted to HTML)
 
 ### Access
 
