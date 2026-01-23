@@ -78,7 +78,7 @@ make up        # Start L2 chain
 
 ```bash
 cd ../../contracts
-forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
+ADMIN_PRIVATE_KEY="0xdc391a1067801d2526c5ac1f42cf3a9dd495f607a4cbc920301c2b5a9215890d" QRM_UPDATER_ADDRESS="0x7Afde307a7F56d0254E42136cAa9896778662302" forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
 ```
 
 ### 3. Start QRMS Services
@@ -124,11 +124,22 @@ cargo run --release
 - **Emergency**: Risk score ≥ 9000
 - **Grace Period**: 1000 blocks for transition
 
+## Development Phases
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| **Phase 1: Foundation** | Complete | OP Stack L2, QRMS service, contracts, dashboard |
+| **Phase 2: Real Cryptography** | In Progress | ML-DSA, SLH-DSA done; ML-KEM, HQC mocked |
+| **Phase 3: TEE Integration** | Simulated | SGX/TDX structure ready, attestation simulated |
+| **Phase 4: Threat Intelligence** | Simulated | 12 categories done, external feeds pending |
+
+See [ROADMAP.md](./ROADMAP.md) for detailed phase breakdown.
+
 ## Deployment Status
 
-- **L2 Testnet**: Operational (Chain ID: 42069)
+- **L2 Testnet**: Operational (Chain ID: 16584)
 - **QRMS Contracts**: Deployed on L2
-- **PQC**: ML-DSA-87, SLH-DSA-256s integrated
+- **PQC**: ML-DSA-87, SLH-DSA-256s integrated (real pqcrypto)
 - **Hybrid Signatures**: ECDSA + PQC implemented
 - **Key Management**: Generation & rotation functional
 
@@ -136,6 +147,7 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for contract addresses and status.
 
 ## Documentation
 
+- [Roadmap](./ROADMAP.md) - Development phases and status
 - [Architecture](./docs/architecture/README.md) - System design and components
 - [Deployment](./docs/deployment/README.md) - Setup and deployment guides
 - [Directory Tree](./DIRECTORY_TREE.md) - Repository structure
@@ -151,5 +163,5 @@ MIT License - see [LICENSE](./LICENSE) for details.
 ## Links
 
 - **Protocol Name**: QuantumAegis
-- **Chain ID**: 42069 (Testnet)
+- **Chain ID**: 16584 (Testnet)
 - **L1**: Sepolia Testnet

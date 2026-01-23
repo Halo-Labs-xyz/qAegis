@@ -72,8 +72,10 @@ services:
     working_dir: /workspace
     env_file:
       - ./batcher/.env
+      - .env
     command: >
       op-batcher
+      --l1-eth-rpc=${L1_RPC_URL}
       --l2-eth-rpc=http://op-geth:8545
       --rollup-rpc=http://op-node:9545
       --rpc.addr=0.0.0.0

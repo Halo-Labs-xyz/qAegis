@@ -9,6 +9,14 @@ QuantumAegis is a quantum-resistant blockchain protocol that combines:
 3. **TEE Sequencer**: Trusted execution environment for secure transaction ordering
 4. **OP Stack L2**: EVM-compatible rollup with full L1 data availability
 
+## Development Phases
+
+| Phase | Status | Documentation |
+|-------|--------|---------------|
+| Phase 2: Cryptography | In Progress | [phase2_cryptography.md](./phase2_cryptography.md) |
+| Phase 3: TEE | Simulated | [phase3_tee.md](./phase3_tee.md) |
+| Phase 4: Threat Intelligence | Simulated | [phase4_threat_intelligence.md](./phase4_threat_intelligence.md) |
+
 ## Core Documents
 
 - [Stack Architecture](./stack_architecture.md) - OP Stack integration decisions
@@ -62,8 +70,8 @@ graph TB
 
 ## Deployment Status
 
-- L2 testnet operational (Chain ID: 42069)
+- L2 testnet operational (Chain ID: 16584)
 - QRMS contracts deployed
-- PQC cryptography integrated
+- PQC cryptography integrated (ML-DSA-87, SLH-DSA-256s real; ML-KEM, HQC mocked)
 - Hybrid signatures implemented
 - Key management functional
