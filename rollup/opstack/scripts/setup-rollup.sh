@@ -20,8 +20,9 @@ NC='\033[0m' # No Color
 
 # Configuration
 L1_CHAIN_ID=11155111  # Sepolia
+# L2_CHAIN_ID should be set from .env file, default to 16584 if not set
 L2_CHAIN_ID_DECIMAL=${L2_CHAIN_ID:-16584}  # Default test chain ID (decimal)
-L2_CHAIN_ID=$(printf "0x%064x" "$L2_CHAIN_ID_DECIMAL")  # Convert to full 64-char hex format for TOML
+L2_CHAIN_ID_HEX=$(printf "0x%064x" "$L2_CHAIN_ID_DECIMAL")  # Convert to full 64-char hex format for TOML
 P2P_ADVERTISE_IP=${P2P_ADVERTISE_IP:-127.0.0.1}  # Default to localhost for local testing
 WORKSPACE_DIR="$(pwd)"
 ROLLUP_DIR="$WORKSPACE_DIR"
@@ -130,23 +131,114 @@ update_intent() {
     BATCHER_ADDR=$(cat addresses/batcher_address.txt)
     PROPOSER_ADDR=$(cat addresses/proposer_address.txt)
     CHALLENGER_ADDR=$(cat addresses/challenger_address.txt)
+    
+    # Use admin address for operatorFeeVaultRecipient and chainFeesRecipient if they need non-zero values
+    ADMIN_ADDR=$(cat addresses/admin_address.txt)
 
     # Keep the default contract locators and opcmAddress from op-deployer init
 
     # Update only the chain-specific fields in the existing intent.toml
-    L2_CHAIN_ID_HEX=$(printf "0x%064x" "$L2_CHAIN_ID")
-    sed -i.bak "s|id = .*|id = \"$L2_CHAIN_ID_HEX\"|" .deployer/intent.toml
-    sed -i.bak "s|baseFeeVaultRecipient = .*|baseFeeVaultRecipient = \"$BASE_FEE_VAULT_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|l1FeeVaultRecipient = .*|l1FeeVaultRecipient = \"$L1_FEE_VAULT_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|sequencerFeeVaultRecipient = .*|sequencerFeeVaultRecipient = \"$SEQUENCER_FEE_VAULT_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|systemConfigOwner = .*|systemConfigOwner = \"$SYSTEM_CONFIG_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|unsafeBlockSigner = .*|unsafeBlockSigner = \"$UNSAFE_BLOCK_SIGNER_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|batcher = .*|batcher = \"$BATCHER_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|proposer = .*|proposer = \"$PROPOSER_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|challenger = .*|challenger = \"$CHALLENGER_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|fundDevAccounts = .*|fundDevAccounts = true|" .deployer/intent.toml
+    L2_CHAIN_ID_HEX=$(printf "0x%064x" "$L2_CHAIN_ID_DECIMAL")
+    
+    # Use Python to update TOML file more reliably
+    python3 << EOF
+import re
+
+toml_file = ".deployer/intent.toml"
+with open(toml_file, 'r') as f:
+    content = f.read()
+
+# Variables from bash (will be expanded by shell)
+l2_chain_id_hex = "$L2_CHAIN_ID_HEX"
+base_fee_vault = "$BASE_FEE_VAULT_ADDR"
+l1_fee_vault = "$L1_FEE_VAULT_ADDR"
+sequencer_fee_vault = "$SEQUENCER_FEE_VAULT_ADDR"
+admin_addr = "$ADMIN_ADDR"
+system_config = "$SYSTEM_CONFIG_ADDR"
+unsafe_block_signer = "$UNSAFE_BLOCK_SIGNER_ADDR"
+batcher = "$BATCHER_ADDR"
+proposer = "$PROPOSER_ADDR"
+challenger = "$CHALLENGER_ADDR"
+
+# Update chain ID
+content = re.sub(r'^  id = .*', f'  id = "{l2_chain_id_hex}"', content, flags=re.MULTILINE)
+
+# Update fee vault recipients (must be non-zero)
+content = re.sub(r'^  baseFeeVaultRecipient = .*', f'  baseFeeVaultRecipient = "{base_fee_vault}"', content, flags=re.MULTILINE)
+content = re.sub(r'^  l1FeeVaultRecipient = .*', f'  l1FeeVaultRecipient = "{l1_fee_vault}"', content, flags=re.MULTILINE)
+content = re.sub(r'^  sequencerFeeVaultRecipient = .*', f'  sequencerFeeVaultRecipient = "{sequencer_fee_vault}"', content, flags=re.MULTILINE)
+
+# Update operatorFeeVaultRecipient and chainFeesRecipient (these are set to zero by default but need non-zero)
+content = re.sub(r'^  operatorFeeVaultRecipient = .*', f'  operatorFeeVaultRecipient = "{admin_addr}"', content, flags=re.MULTILINE)
+content = re.sub(r'^  chainFeesRecipient = .*', f'  chainFeesRecipient = "{admin_addr}"', content, flags=re.MULTILINE)
+
+# Update roles (these are under [chains.roles] section)
+content = re.sub(r'^    systemConfigOwner = .*', f'    systemConfigOwner = "{system_config}"', content, flags=re.MULTILINE)
+content = re.sub(r'^    unsafeBlockSigner = .*', f'    unsafeBlockSigner = "{unsafe_block_signer}"', content, flags=re.MULTILINE)
+content = re.sub(r'^    batcher = .*', f'    batcher = "{batcher}"', content, flags=re.MULTILINE)
+content = re.sub(r'^    proposer = .*', f'    proposer = "{proposer}"', content, flags=re.MULTILINE)
+content = re.sub(r'^    challenger = .*', f'    challenger = "{challenger}"', content, flags=re.MULTILINE)
+
+with open(toml_file, 'w') as f:
+    f.write(content)
+
+print("Updated intent.toml with all addresses")
+EOF
 
     log_success "Intent configuration updated"
+}
+
+# Check wallet balance
+check_balance() {
+    log_info "Checking wallet balance..."
+    
+    # Get wallet address from private key using cast if available
+    if command -v cast &> /dev/null; then
+        WALLET_ADDR=$(cast wallet address "$PRIVATE_KEY" 2>/dev/null || echo "")
+    else
+        log_warning "cast not found, cannot check balance"
+        return
+    fi
+    
+    if [ -z "$WALLET_ADDR" ]; then
+        log_warning "Could not derive wallet address"
+        return
+    fi
+    
+    # Check balance via RPC
+    BALANCE_RESPONSE=$(curl -s -X POST \
+        -H "Content-Type: application/json" \
+        --data "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"$WALLET_ADDR\",\"latest\"],\"id\":1}" \
+        "$L1_RPC_URL" 2>/dev/null)
+    
+    BALANCE=$(echo "$BALANCE_RESPONSE" | jq -r '.result' 2>/dev/null || echo "0x0")
+    
+    if [ "$BALANCE" != "0x0" ] && [ "$BALANCE" != "null" ] && [ -n "$BALANCE" ]; then
+        # Convert hex to decimal
+        BALANCE_DECIMAL=$(printf "%d" "$BALANCE" 2>/dev/null || echo "0")
+        
+        # Convert from wei to ETH using awk (more portable than bc)
+        BALANCE_ETH=$(awk "BEGIN {printf \"%.6f\", $BALANCE_DECIMAL / 1000000000000000000}")
+        log_info "Wallet address: $WALLET_ADDR"
+        log_info "Wallet balance: $BALANCE_ETH ETH"
+        
+        # Check if balance is sufficient (need at least 0.05 ETH for deployment)
+        MIN_BALANCE_WEI=50000000000000000  # 0.05 ETH in wei
+        if [ "$BALANCE_DECIMAL" -lt "$MIN_BALANCE_WEI" ]; then
+            log_warning "Wallet balance may be insufficient for deployment"
+            log_info "Recommended: at least 0.05 ETH on Sepolia testnet"
+            log_info "Current balance: $BALANCE_ETH ETH"
+            log_info "Get Sepolia ETH from:"
+            log_info "  - https://sepoliafaucet.com/"
+            log_info "  - https://faucet.quicknode.com/ethereum/sepolia"
+            log_info "  - https://www.alchemy.com/faucets/ethereum-sepolia"
+        else
+            log_success "Wallet balance sufficient for deployment"
+        fi
+    else
+        log_warning "Could not check wallet balance from RPC"
+        log_info "Ensure your wallet has at least 0.05 ETH on Sepolia testnet"
+    fi
 }
 
 # Deploy L1 contracts
@@ -154,6 +246,9 @@ deploy_contracts() {
     log_info "Deploying L1 contracts..."
 
     cd "$DEPLOYER_DIR"
+    
+    # Check balance before deploying
+    check_balance
 
     op-deployer apply \
         --workdir .deployer \
@@ -169,8 +264,8 @@ generate_config() {
 
     cd "$DEPLOYER_DIR"
 
-    op-deployer inspect genesis --workdir .deployer "$L2_CHAIN_ID" > .deployer/genesis.json
-    op-deployer inspect rollup --workdir .deployer "$L2_CHAIN_ID" > .deployer/rollup.json
+    op-deployer inspect genesis --workdir .deployer "$L2_CHAIN_ID_DECIMAL" > .deployer/genesis.json
+    op-deployer inspect rollup --workdir .deployer "$L2_CHAIN_ID_DECIMAL" > .deployer/rollup.json
 
     log_success "Chain configuration generated"
 }
@@ -196,7 +291,7 @@ L1_RPC_URL=$L1_RPC_URL
 L1_BEACON_URL=$L1_BEACON_URL
 PRIVATE_KEY=$PRIVATE_KEY
 P2P_ADVERTISE_IP=$P2P_ADVERTISE_IP
-L2_CHAIN_ID=$L2_CHAIN_ID
+L2_CHAIN_ID=$L2_CHAIN_ID_DECIMAL
 EOF
 
     log_success "Sequencer setup complete"
@@ -216,7 +311,7 @@ setup_batcher() {
     # Create .env file with OP_BATCHER prefixed variables
     cat > .env << EOF
 OP_BATCHER_L2_ETH_RPC=http://op-geth:8545
-OP_BATCHER_ROLLUP_RPC=http://op-node:8547
+OP_BATCHER_ROLLUP_RPC=http://op-node:9545
 OP_BATCHER_PRIVATE_KEY=$PRIVATE_KEY
 OP_BATCHER_POLL_INTERVAL=1s
 OP_BATCHER_SUB_SAFETY_MARGIN=6
@@ -448,7 +543,7 @@ setup_dispute_monitor() {
     # Create environment file for dispute monitor
     cat > .env << EOF
 # Rollup RPC Configuration
-ROLLUP_RPC=http://op-node:8547
+ROLLUP_RPC=http://op-node:9545
 
 # Contract Addresses
 OP_DISPUTE_MON_GAME_FACTORY_ADDRESS=$GAME_FACTORY_ADDRESS
@@ -482,7 +577,7 @@ fi
 # Main execution
 main() {
     log_info "Starting OP Stack L2 Rollup deployment..."
-    log_info "L2 Chain ID: $L2_CHAIN_ID"
+    log_info "L2 Chain ID: $L2_CHAIN_ID_HEX (decimal: $L2_CHAIN_ID_DECIMAL)"
     log_info "L1 Chain ID: $L1_CHAIN_ID"
 
     # Clean start - remove any existing deployer directory
@@ -495,6 +590,10 @@ main() {
     generate_addresses
     init_deployer
     update_intent
+    
+    # Check balance before attempting deployment
+    check_balance
+    
     deploy_contracts
     generate_config
     setup_sequencer

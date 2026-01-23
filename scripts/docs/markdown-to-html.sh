@@ -37,7 +37,11 @@ convert_md_to_html() {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>$title</title>
   <link rel="stylesheet" href="/style.css">
+  <style>
+    .mermaid { text-align: center; margin: 2rem 0; background: #fff; padding: 1rem; border-radius: 5px; }
+  </style>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
 </head>
 <body>
   <div class="markdown-body">
@@ -45,7 +49,11 @@ convert_md_to_html() {
       fetch('$rel_path')
         .then(r => r.text())
         .then(md => {
+          // Convert mermaid code blocks before parsing
+          md = md.replace(/```mermaid\n([\s\S]*?)```/g, '<div class="mermaid">$1</div>');
           document.body.innerHTML = marked.parse(md);
+          // Initialize mermaid after content is loaded
+          mermaid.initialize({ startOnLoad: true, theme: 'default' });
         });
     </script>
   </div>
@@ -85,30 +93,54 @@ convert_with_basic_parser() {
         echo "    th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; }"
         echo "    th { background: #f5f5f5; }"
         echo "    blockquote { border-left: 4px solid #ddd; padding-left: 1rem; margin-left: 0; color: #666; }"
+        echo "    .mermaid { text-align: center; margin: 2rem 0; background: #fff; padding: 1rem; border-radius: 5px; }"
         echo "  </style>"
+        echo "  <script src=\"https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js\"></script>"
+        echo "  <script>"
+        echo "    document.addEventListener('DOMContentLoaded', function() {"
+        echo "      mermaid.initialize({ startOnLoad: true, theme: 'default' });"
+        echo "    });"
+        echo "  </script>"
         echo "</head>"
         echo "<body>"
         echo "  <div class=\"markdown-body\">"
         
         # Convert markdown to HTML using sed/awk
         awk '
-        BEGIN { in_code = 0; in_pre = 0; }
+        BEGIN { in_code = 0; in_pre = 0; in_mermaid = 0; mermaid_content = ""; }
         /^```/ {
             if (in_pre) {
-                print "</pre>"
+                if (in_mermaid) {
+                    print "<div class=\"mermaid\">"
+                    print mermaid_content
+                    print "</div>"
+                    mermaid_content = ""
+                    in_mermaid = 0
+                } else {
+                    print "</code></pre>"
+                }
                 in_pre = 0
             } else {
                 lang = $2
-                print "<pre><code>"
+                if (lang == "mermaid" || lang == "language-mermaid") {
+                    in_mermaid = 1
+                    mermaid_content = ""
+                } else {
+                    print "<pre><code class=\"language-" lang "\">"
+                }
                 in_pre = 1
             }
             next
         }
         in_pre {
-            gsub(/&/, "\\&amp;")
-            gsub(/</, "\\&lt;")
-            gsub(/>/, "\\&gt;")
-            print
+            if (in_mermaid) {
+                mermaid_content = mermaid_content $0 "\n"
+            } else {
+                gsub(/&/, "\\&amp;")
+                gsub(/</, "\\&lt;")
+                gsub(/>/, "\\&gt;")
+                print
+            }
             next
         }
         /^# / { gsub(/^# /, "<h1>"); print $0 "</h1>"; next }
@@ -146,7 +178,15 @@ convert_with_basic_parser() {
             print "<p>" $0 "</p>"
         }
         END {
-            if (in_pre) print "</pre></code>"
+            if (in_pre) {
+                if (in_mermaid) {
+                    print "<div class=\"mermaid\">"
+                    print mermaid_content
+                    print "</div>"
+                } else {
+                    print "</code></pre>"
+                }
+            }
             if (table_started) print "</table>"
         }
         ' "$md_file"
@@ -175,10 +215,25 @@ convert_markdown_files() {
         local title=$(grep -m 1 "^# " "$md_file" | sed 's/^# *//' || basename "$md_file" .md)
         
         if command -v pandoc &> /dev/null; then
-            pandoc "$md_file" -f markdown -t html5 --standalone \
-                --metadata title="$title" \
-                --css "$base_path/style.css" \
-                -o "$output_path"
+        # Use pandoc with post-processing for mermaid
+        pandoc "$md_file" -f markdown -t html5 --standalone \
+            --metadata title="$title" \
+            --css "$base_path/style.css" \
+            -o "$output_path"
+        # Post-process to convert mermaid code blocks to divs
+        sed -i.bak 's|<pre class="mermaid"><code>|<div class="mermaid">|g; s|</code></pre>|</div>|g' "$output_path" 2>/dev/null || \
+        sed 's|<pre class="mermaid"><code>|<div class="mermaid">|g; s|</code></pre>|</div>|g' "$output_path" > "$output_path.tmp" && mv "$output_path.tmp" "$output_path"
+        # Add mermaid.js if not present
+        if ! grep -q "mermaid" "$output_path"; then
+            sed -i.bak '/<\/head>/i\
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>\
+  <script>\
+    document.addEventListener('\''DOMContentLoaded'\'', function() {\
+      mermaid.initialize({ startOnLoad: true, theme: '\''default'\'' });\
+    });\
+  </script>
+' "$output_path" 2>/dev/null || true
+        fi
         else
             convert_with_basic_parser "$md_file" "$output_path" "$title" "$base_path"
         fi

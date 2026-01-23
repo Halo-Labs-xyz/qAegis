@@ -3,8 +3,27 @@
 
 import os
 import sys
+import re
 import markdown
 from pathlib import Path
+
+def convert_mermaid_blocks(html_content):
+    """Convert mermaid code blocks to proper mermaid divs"""
+    # Pattern to match <pre><code class="language-mermaid">...</code></pre>
+    # This handles both <pre><code class="language-mermaid"> and <pre><code class="mermaid">
+    pattern = r'<pre><code class="(?:language-)?mermaid">(.*?)</code></pre>'
+    
+    def replace_mermaid(match):
+        mermaid_code = match.group(1)
+        # Unescape HTML entities that might have been encoded
+        mermaid_code = mermaid_code.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+        # Return as mermaid div
+        return f'<div class="mermaid">\n{mermaid_code}\n</div>'
+    
+    # Replace all mermaid code blocks
+    html_content = re.sub(pattern, replace_mermaid, html_content, flags=re.DOTALL)
+    
+    return html_content
 
 def convert_md_to_html(md_path):
     """Convert markdown file to HTML"""
@@ -23,6 +42,9 @@ def convert_md_to_html(md_path):
         md_content,
         extensions=['fenced_code', 'tables', 'codehilite']
     )
+    
+    # Convert mermaid code blocks to proper divs
+    html_content = convert_mermaid_blocks(html_content)
     
     # Create HTML page
     html_page = f"""<!DOCTYPE html>
@@ -43,10 +65,14 @@ def convert_md_to_html(md_path):
     th, td {{ border: 1px solid #ddd; padding: 0.5rem; text-align: left; }}
     th {{ background: #f5f5f5; }}
     blockquote {{ border-left: 4px solid #ddd; padding-left: 1rem; margin-left: 0; color: #666; }}
-    .mermaid {{ text-align: center; margin: 2rem 0; }}
+    .mermaid {{ text-align: center; margin: 2rem 0; background: #fff; padding: 1rem; border-radius: 5px; }}
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
-  <script>mermaid.initialize({{startOnLoad:true}});</script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {{
+      mermaid.initialize({{ startOnLoad: true, theme: 'default' }});
+    }});
+  </script>
 </head>
 <body>
   <div class="markdown-body">

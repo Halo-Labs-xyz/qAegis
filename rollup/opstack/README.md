@@ -42,7 +42,13 @@ mise install
 ### Network Access
 
 - **Sepolia RPC URL**: Get from [Infura](https://infura.io), [Alchemy](https://alchemy.com), or another provider
-- **Sepolia ETH**: At least 2-3 ETH for contract deployment and operations
+- **Sepolia ETH**: Minimum 0.05 ETH required for initial contract deployment
+  - Contract deployment typically costs 0.03-0.04 ETH
+  - Additional ETH needed for batcher/proposer operations
+  - Get Sepolia ETH from:
+    - https://sepoliafaucet.com/
+    - https://faucet.quicknode.com/ethereum/sepolia
+    - https://www.alchemy.com/faucets/ethereum-sepolia
 - **Public IP**: For P2P networking (use `curl ifconfig.me` to find your public IP)
 
 ## Quick Start

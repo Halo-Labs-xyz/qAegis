@@ -10,7 +10,7 @@ services:
     env_file:
       - .env
     ports:
-      - "8547:8547"
+      - "9545:9545"
       - "9222:9222"
     command: >
       op-node
@@ -23,16 +23,16 @@ services:
       --sequencer.stopped=false
       --sequencer.max-safe-lag=3600
       --verifier.l1-confs=4
-      --p2p.disable  # For local devnet only. Remove this flag for production deployments.
+      --p2p.disable
       --rpc.addr=0.0.0.0
-      --rpc.port=8547
+      --rpc.port=9545
       --rpc.enable-admin
       --log.level=info
       --log.format=json
     depends_on:
       - op-geth
     healthcheck:
-      test: ["CMD", "wget", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"optimism_syncStatus\",\"params\":[],\"id\":1}", "--header=Content-Type: application/json", "--quiet", "--tries=1", "--timeout=10", "--output-document=-", "http://localhost:8547"]
+      test: ["CMD", "wget", "--post-data={\"jsonrpc\":\"2.0\",\"method\":\"optimism_syncStatus\",\"params\":[],\"id\":1}", "--header=Content-Type: application/json", "--quiet", "--tries=1", "--timeout=10", "--output-document=-", "http://localhost:9545"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -105,7 +105,7 @@ services:
     command: >
       op-proposer
       --rpc.port=8560
-      --rollup-rpc=http://op-node:8547
+      --rollup-rpc=http://op-node:9545
       --allow-non-finalized=true
       --wait-node-sync=true
       --log.level=info
@@ -134,7 +134,7 @@ services:
       --cannon-l2-genesis=/workspace/genesis.json
       --cannon-rollup-config=/workspace/rollup.json
       --l2-eth-rpc=http://op-geth:8545
-      --rollup-rpc=http://op-node:8547
+      --rollup-rpc=http://op-node:9545
       --datadir=/workspace/data
       --log.level=info
       --log.format=json
