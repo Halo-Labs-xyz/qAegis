@@ -1,5 +1,33 @@
 # QuantumAegis Roadmap
 
+## Protocol Stack Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    QUANTUM AEGIS PROTOCOL STACK                 │
+├─────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │               QVM ORACLE LAYER (Phase 5)                │    │
+│  │  Google Cirq • Willow 105Q • Grover/Shor Assessment     │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                              ▼                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │           QRMS LAYER (Phase 2 + 4)                      │    │
+│  │  ML-DSA-87 • SLH-DSA-256s • ECDSA • 12 Threat Cats      │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                              ▼                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │           PHALA TEE LAYER (Phase 3)                     │    │
+│  │  Encrypted Mempool • Asset Protection • Migration       │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                              ▼                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │           BLOCKCHAIN LAYER (Phase 1)                    │    │
+│  │  OP Stack L2 • Smart Contracts • Rollup Settlement      │    │
+│  └─────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 ## Phase 1: Foundation (Complete)
 
 | Component | Status | Implementation |
@@ -39,34 +67,70 @@
    - Fallback to portable implementations
 ```
 
-## Phase 3: TEE Integration (Simulated)
+## Phase 3: TEE Integration (Phala Network)
 
 | Task | Priority | Status | Location |
 |------|----------|--------|----------|
-| TEE Sequencer Structure | Medium | Done | `sequencer.rs:78-106` |
-| MRENCLAVE/MRSIGNER | Medium | Simulated | `sequencer.rs:92-104` |
-| TEE Attestation | Medium | Simulated | `sequencer.rs:219-244` |
-| Encrypted Mempool | Medium | Simulated | `sequencer.rs:80,108-113` |
-| Batch Ordering (FCFS/Auction) | Medium | Done | `sequencer.rs:136-168` |
-| PQC-Signed Batches | Medium | Done | `sequencer.rs:171-217` |
+| Phala TEE Sequencer | High | Done | `phala_tee.rs` - Full implementation |
+| Phala Attestation | High | Done | `phala_tee.rs:47-57` |
+| Encrypted Mempool | High | Done | `phala_tee.rs:108-113` |
+| Intelligence Ordering | High | Done | `phala_tee.rs:135-245` |
+| Asset Protection | High | Done | `phala_tee.rs:59-88` |
+| State Migration | High | Done | `phala_tee.rs:320-380` |
+| Quantum-Resistant Batching | High | Done | `phala_tee.rs:247-318` |
+| Phala Deployment Config | Medium | Done | `phala.toml`, `phala_deploy.rs` |
+| Legacy SGX Sequencer | Low | Simulated | `sequencer.rs` - For reference |
 
-### Phase 3 Remaining Work
+### Phase 3 Phala Integration (Complete)
 
 ```
-1. Intel SGX/TDX Integration
-   - Replace simulation with real SGX SDK
-   - Implement enclave entry points
-   - Hardware attestation via DCAP
+✅ Phala TEE Sequencer Implementation
+   - Full Phala Network integration
+   - TDX/SEV enclave support
+   - Hardware attestation via Phala quotes
 
-2. Remote Attestation
-   - Intel Attestation Service integration
-   - On-chain attestation verification in SequencerAttestation.sol
-   - Quote verification logic
+✅ Intelligence-Based Ordering
+   - Risk-aware ordering
+   - Asset protection prioritization
+   - Migration-aware grouping
+   - Hybrid strategy
 
-3. Encrypted Mempool
-   - Threshold encryption for transaction privacy
-   - Commit-reveal scheme for MEV protection
-   - TEE-based decryption only after ordering
+✅ Asset Protection System
+   - On-chain asset protection (tokens, NFTs, data)
+   - Off-chain asset protection (databases, files, streams)
+   - Cross-chain bridge protection
+   - Access policy enforcement
+
+✅ State Migration
+   - Checkpoint creation
+   - Asset state snapshots
+   - PQC-signed migration state
+   - Rollback support
+
+✅ Deployment Infrastructure
+   - Phala configuration (phala.toml)
+   - Deployment utilities (phala_deploy.rs)
+   - Example integration code
+   - Comprehensive documentation
+```
+
+### Phase 3 Production Deployment
+
+```
+1. Phala Network Mainnet Deployment
+   - Deploy to Phala Cloud
+   - Configure TEE workers (3-10 workers)
+   - Verify attestation chain
+
+2. On-Chain Integration
+   - Update SequencerAttestation.sol for Phala quotes
+   - Verify Phala attestation on-chain
+   - Integrate with QRMSOracle
+
+3. Monitoring & Operations
+   - Set up Phala worker monitoring
+   - Configure alerting for high-risk events
+   - Establish migration procedures
 ```
 
 ## Phase 4: Threat Intelligence (Simulated)
@@ -101,7 +165,83 @@
    - On-chain oracle updates triggered by high-risk events
 ```
 
-## Phase 5: Production Hardening (Future)
+## Phase 5: QVM Integration (Complete)
+
+| Task | Priority | Status | Location |
+|------|----------|--------|----------|
+| QVM Simulator | High | Done | `qvm.rs:900+` - State vector simulation |
+| Noise Models | High | Done | `qvm.rs:183-229` - Willow/Weber/Rainbow |
+| Qubit Picker | High | Done | `qvm.rs:231-870` - Hardware qubit selection |
+| Grover Threat Oracle | High | Done | `qvm.rs:1300+` |
+| Shor Threat Oracle | High | Done | `qvm.rs:1360+` |
+| Protocol Stack | High | Done | `qvm.rs:1500+` - Full integration |
+| TEE Bridge | High | Done | `qvm.rs:1650+` |
+| QVM Configuration | Medium | Done | `qvm.toml` |
+
+### Phase 5 Implementation Details
+
+```
+✅ Quantum Virtual Machine
+   - Google Cirq-compatible circuit representation
+   - State vector simulation with noise
+   - Support for Willow (105Q), Weber (72Q), Rainbow (53Q)
+   - Custom processor configurations
+
+✅ Noise Model from Calibration
+   - Depolarizing noise from 2Q error rates
+   - Amplitude/phase damping from T1 coherence
+   - Readout errors
+   - Gate duration-based decoherence
+
+✅ Qubit Picking for Hardware Execution
+   - Per-qubit error characterization from calibration
+   - Single-qubit Pauli, two-qubit Pauli, FSim errors
+   - Readout error (0→1 excitation, 1→0 decay)
+   - Multiple picking strategies (Balanced, MinimizeError, etc.)
+   - Automatic bad qubit/pair avoidance
+   - Circuit transformation to hardware qubits
+   - Connectivity-aware qubit assignment
+
+✅ Grover's Algorithm Threat Assessment
+   - Symmetric crypto evaluation (AES, SHA)
+   - Quadratic speedup modeling
+   - Physical qubit estimation with error correction
+   - Time-to-break estimation
+
+✅ Shor's Algorithm Threat Assessment
+   - Public key crypto evaluation (RSA, ECDSA, BLS)
+   - Logical qubit requirements
+   - T-gate count estimation
+   - Error correction overhead
+
+✅ Protocol Stack Integration
+   - QVM Oracle → QRMS bridge
+   - Automatic era transitions
+   - Threat indicator generation
+   - TEE sequencer bridge
+```
+
+### Supported Quantum Processors
+
+| Processor | Qubits | 2Q Error | T1 (μs) | Status |
+|-----------|--------|----------|---------|--------|
+| Willow Pink | 105 | 0.34% | 70 | Default |
+| Weber | 72 | 0.60% | 25 | Available |
+| Rainbow | 53 | 0.90% | 20 | Available |
+| Custom | N | Config | Config | Available |
+
+### Threat Levels
+
+| Level | Score Range | Era | Action |
+|-------|-------------|-----|--------|
+| None | 0 | PreQuantum | Continue classical |
+| Theoretical | 0-1000 | PreQuantum | Monitor |
+| Long-term | 1000-3000 | PreQuantum | Plan migration |
+| Medium-term | 3000-5000 | Nisq | Schedule rotation |
+| Near-term | 5000-7500 | Nisq | Begin migration |
+| Imminent | 7500-10000 | FaultTolerant | Emergency rotation |
+
+## Phase 6: Production Hardening (Future)
 
 | Task | Priority | Status |
 |------|----------|--------|
@@ -114,6 +254,17 @@
 
 ```mermaid
 graph TB
+    subgraph Phase5["Phase 5: QVM Oracle"]
+        QVM[QVM Simulator<br/>Willow 105Q]
+        NOISE[Noise Model<br/>Calibration]
+        GROVER[Grover Oracle<br/>Symmetric]
+        SHOR[Shor Oracle<br/>Asymmetric]
+        
+        QVM --> NOISE
+        NOISE --> GROVER
+        NOISE --> SHOR
+    end
+    
     subgraph Phase2["Phase 2: Cryptography"]
         MLDSA[ML-DSA-87<br/>Done]
         SLHDSA[SLH-DSA-256s<br/>Done]
@@ -127,15 +278,6 @@ graph TB
         ECDSA --> HYBRID
     end
     
-    subgraph Phase3["Phase 3: TEE"]
-        ENCLAVE[SGX Enclave<br/>Simulated]
-        ATTEST[Attestation<br/>Simulated]
-        MEMPOOL[Encrypted Mempool<br/>Simulated]
-        
-        ENCLAVE --> ATTEST
-        MEMPOOL --> ENCLAVE
-    end
-    
     subgraph Phase4["Phase 4: Intelligence"]
         THREAT[12 Categories<br/>Done]
         FEEDS[External Feeds<br/>Simulated]
@@ -145,8 +287,21 @@ graph TB
         THREAT --> MLRISK
     end
     
-    HYBRID --> ENCLAVE
+    subgraph Phase3["Phase 3: TEE"]
+        PHALA[Phala TEE<br/>Done]
+        ATTEST[Attestation<br/>Done]
+        MEMPOOL[Encrypted Mempool<br/>Done]
+        ASSET[Asset Protection<br/>Done]
+        
+        PHALA --> ATTEST
+        MEMPOOL --> PHALA
+        ASSET --> PHALA
+    end
+    
+    GROVER --> THREAT
+    SHOR --> THREAT
     THREAT --> |Risk Score| HYBRID
+    HYBRID --> PHALA
 ```
 
 ## Current Algorithm Configuration

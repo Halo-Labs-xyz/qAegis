@@ -4,18 +4,55 @@
 
 QuantumAegis is a quantum-resistant blockchain protocol that combines:
 
-1. **Quantum Resistance Monitor (QRM)**: Proactive threat detection across 12 categories
-2. **Adaptive PQC Layer (APQC)**: Dual signature scheme (ML-DSA-87 + SLH-DSA-256s) with hybrid ECDSA
-3. **TEE Sequencer**: Trusted execution environment for secure transaction ordering
-4. **OP Stack L2**: EVM-compatible rollup with full L1 data availability
+1. **Quantum Virtual Machine (QVM)**: Google Cirq-based oracle for quantum threat assessment
+2. **Quantum Resistance Monitor (QRM)**: Proactive threat detection across 12 categories
+3. **Adaptive PQC Layer (APQC)**: Dual signature scheme (ML-DSA-87 + SLH-DSA-256s) with hybrid ECDSA
+4. **TEE Sequencer**: Phala Network TEE for secure transaction ordering
+5. **OP Stack L2**: EVM-compatible rollup with full L1 data availability
+
+## Protocol Stack
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    QUANTUM AEGIS PROTOCOL STACK                 │
+├─────────────────────────────────────────────────────────────────┤
+│  QVM Oracle Layer     │ Quantum circuit simulation, threat oracle│
+│  QRMS Layer          │ QRM + APQC, 12 threat categories          │
+│  Phala TEE Layer     │ Encrypted mempool, asset protection       │
+│  Blockchain Layer    │ OP Stack L2, smart contracts              │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ## Development Phases
 
 | Phase | Status | Documentation |
 |-------|--------|---------------|
 | Phase 2: Cryptography | In Progress | [phase2_cryptography.md](./phase2_cryptography.md) |
-| Phase 3: TEE | Simulated | [phase3_tee.md](./phase3_tee.md) |
+| Phase 3: TEE | Phala Ready | [phala_integration.md](./phala_integration.md), [phase3_tee.md](./phase3_tee.md) |
 | Phase 4: Threat Intelligence | Simulated | [phase4_threat_intelligence.md](./phase4_threat_intelligence.md) |
+| Phase 5: QVM Integration | Complete | [qvm_integration.md](./qvm_integration.md) |
+
+## QVM Oracle Layer
+
+**Status:** Implementation Complete
+
+- [QVM Summary](./QVM_SUMMARY.md) - Quick overview
+- [QVM Integration Guide](./qvm_integration.md) - Full architecture and API
+
+**Features:**
+- Google Cirq-compatible circuit simulation
+- Willow (105Q), Weber (72Q), Rainbow (53Q) processors
+- Grover's algorithm threat assessment (symmetric crypto)
+- Shor's algorithm threat assessment (public key crypto)
+- Automatic quantum era transitions
+
+## Phala Network TEE
+
+**Status:** Implementation Complete
+
+- [Phala Integration Summary](./PHALA_SUMMARY.md) - Quick overview
+- [Phala Integration Guide](./phala_integration.md) - Detailed architecture
+- [Phala Deployment Guide](../deployment/PHALA_TEE.md) - Deployment instructions
 
 ## Core Documents
 
@@ -29,14 +66,26 @@ QuantumAegis is a quantum-resistant blockchain protocol that combines:
 
 ```mermaid
 graph TB
-    subgraph Protocol["QuantumAegis Protocol"]
+    subgraph QVMLayer["QVM Oracle Layer"]
+        QVM["Quantum Virtual Machine<br/>• Willow 105Q Simulation<br/>• Noise Model from Calibration<br/>• Circuit Execution"]
+        ORACLE["Threat Oracle<br/>• Grover Assessment (Symmetric)<br/>• Shor Assessment (Asymmetric)<br/>• Era Transition Signals"]
+        QVM --> ORACLE
+    end
+    
+    subgraph QRMSLayer["QRMS Layer"]
         QRM["Quantum Resistance Monitor (QRM)<br/>• 12 Threat Categories<br/>• Risk Scoring (0-10000)<br/>• Algorithm Rotation Signals"]
         APQC["Adaptive PQC Layer (APQC)<br/>• ML-DSA-87 (Dilithium-5)<br/>• SLH-DSA-256s (SPHINCS+)<br/>• ECDSA (Secp256k1) - Hybrid<br/>• Key Rotation Management"]
-        TEE["TEE Sequencer<br/>• Encrypted Mempool (SGX/TDX)<br/>• Fair Transaction Ordering<br/>• PQC-Signed Attestations"]
-        L2["OP Stack L2 Rollup<br/>• op-geth (Execution)<br/>• op-node (Consensus)<br/>• op-batcher (Data Availability)<br/>• On-chain Contracts"]
-        
+        ORACLE --> QRM
         QRM --> APQC
+    end
+    
+    subgraph TEELayer["Phala TEE Layer"]
+        TEE["Phala TEE Sequencer<br/>• TDX/SEV Enclaves<br/>• Encrypted Mempool<br/>• Asset Protection<br/>• Intelligence Ordering"]
         APQC --> TEE
+    end
+    
+    subgraph ChainLayer["Blockchain Layer"]
+        L2["OP Stack L2 Rollup<br/>• op-geth (Execution)<br/>• op-node (Consensus)<br/>• op-batcher (Data Availability)<br/>• On-chain Contracts"]
         TEE --> L2
     end
 ```

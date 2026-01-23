@@ -5,6 +5,7 @@
 !*.env.example
 .env.bak
 *.json
+.cursor/
 
 # Rust
 target/

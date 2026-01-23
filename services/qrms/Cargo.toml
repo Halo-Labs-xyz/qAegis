@@ -60,6 +60,13 @@ tokio-tungstenite = "0.24"
 # HTTP client (for CLI)
 reqwest = { version = "0.12", features = ["json"] }
 
+# Configuration parsing (optional, for phala_deploy)
+toml = { version = "0.8", optional = true }
+
+[features]
+default = []
+phala = ["toml"]
+
 [[bin]]
 name = "qrms"
 path = "src/main.rs"

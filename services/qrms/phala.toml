@@ -1,0 +1,77 @@
+# Phala Network TEE Cloud Configuration
+# QuantumAegis Sequencer Deployment
+
+[phala]
+# Phala Network endpoint
+network = "mainnet"  # Options: mainnet, testnet, local
+
+# TEE Worker Configuration
+[worker]
+id = "quantumaegis-sequencer"
+enclave_type = "TDX"  # Options: TDX, SEV
+min_workers = 3       # Minimum TEE workers for redundancy
+max_workers = 10      # Maximum TEE workers
+
+# Contract Configuration
+[contract]
+name = "QuantumAegisSequencer"
+version = "1.0.0"
+gas_limit = 10000000
+storage_deposit = 1000000000000  # 1 PHA
+
+# Quantum Resistance Configuration
+[quantum]
+# PQC algorithms to use
+signature_algorithms = ["ML-DSA-87", "SLH-DSA-256s"]
+kem_algorithms = ["ML-KEM-1024", "HQC-256"]
+hybrid_ecdsa = true
+
+# Risk thresholds
+risk_scheduled = 6000
+risk_emergency = 9000
+
+# Intelligence Ordering
+[intelligence]
+mode = "hybrid"  # Options: risk_aware, asset_protection, migration_aware, hybrid
+enable_asset_protection = true
+enable_migration = true
+
+# Asset Protection
+[assets]
+# On-chain asset types to protect
+onchain_tokens = true
+onchain_nfts = true
+onchain_data = true
+
+# Off-chain asset types to protect
+offchain_database = true
+offchain_files = true
+offchain_streams = true
+
+# Cross-chain bridges
+crosschain_bridges = true
+
+# Migration Configuration
+[migration]
+checkpoint_interval = 100  # Blocks between checkpoints
+enable_rollback = true
+state_encryption = true
+
+# Performance
+[performance]
+batch_size = 10
+mempool_capacity = 10000
+max_transactions_per_batch = 50
+
+# Monitoring
+[monitoring]
+enable_metrics = true
+enable_logs = true
+log_level = "info"
+
+# Security
+[security]
+require_tee_attestation = true
+verify_phala_quote = true
+enforce_pqc_signatures = true
+encrypt_mempool = true

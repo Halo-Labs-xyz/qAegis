@@ -1,32 +1,48 @@
 # QuantumAegis
 
-Quantum-resistant blockchain protocol with adaptive PQC and TEE security.
+Quantum-resistant blockchain protocol with adaptive PQC, TEE security, and QVM oracle.
 
-L2 rollup protocol that monitors quantum threats and secures blockchain infrastructure with post-quantum cryptography, trusted execution environments, and algorithm rotation.
+L2 rollup protocol that monitors quantum threats and secures blockchain infrastructure with post-quantum cryptography, trusted execution environments, quantum virtual machine oracles, and algorithm rotation.
 
 ## Overview
 
 QuantumAegis combines:
 
+- **Quantum Virtual Machine (QVM)**: Google Cirq-based oracle for threat assessment
 - **Quantum Resistance Monitor (QRM)**: Threat detection across 12 categories
 - **Adaptive PQC Layer**: ML-DSA-87, SLH-DSA-256s, and hybrid ECDSA signatures
-- **TEE Sequencer**: Intel SGX/TDX-secured transaction ordering
+- **TEE Sequencer**: Phala Network TEE for secure transaction ordering
 - **OP Stack L2**: EVM-compatible rollup with full L1 data availability
 
 ## Architecture
 
 ```mermaid
 graph TB
-    subgraph Protocol["QuantumAegis Protocol"]
-        QRM["QRM Monitor<br/>(Threats)"]
-        APQC["APQC Layer<br/>(PQC Dual)"]
-        TEE["TEE Sequencer<br/>(Secure)"]
-        L2["OP Stack L2<br/>Rollup Chain"]
-        
+    subgraph QVMLayer["QVM Oracle Layer"]
+        QVM["Quantum VM<br/>Willow 105Q"]
+        GROVER["Grover Oracle<br/>Symmetric Threats"]
+        SHOR["Shor Oracle<br/>Asymmetric Threats"]
+        QVM --> GROVER
+        QVM --> SHOR
+    end
+    
+    subgraph QRMSLayer["QRMS Layer"]
+        QRM["QRM Monitor<br/>12 Categories"]
+        APQC["APQC Layer<br/>Hybrid PQC"]
+        GROVER --> QRM
+        SHOR --> QRM
         QRM --> APQC
+    end
+    
+    subgraph TEELayer["TEE Layer"]
+        TEE["Phala TEE<br/>TDX/SEV"]
+        MEMPOOL["Encrypted<br/>Mempool"]
         APQC --> TEE
-        QRM --> L2
-        APQC --> L2
+        MEMPOOL --> TEE
+    end
+    
+    subgraph ChainLayer["Blockchain Layer"]
+        L2["OP Stack L2<br/>Chain 16584"]
         TEE --> L2
     end
 ```
@@ -130,8 +146,9 @@ cargo run --release
 |-------|--------|-------------|
 | **Phase 1: Foundation** | Complete | OP Stack L2, QRMS service, contracts, dashboard |
 | **Phase 2: Real Cryptography** | In Progress | ML-DSA, SLH-DSA done; ML-KEM, HQC mocked |
-| **Phase 3: TEE Integration** | Simulated | SGX/TDX structure ready, attestation simulated |
+| **Phase 3: TEE Integration** | Phala Ready | Phala Network TEE sequencer with asset protection |
 | **Phase 4: Threat Intelligence** | Simulated | 12 categories done, external feeds pending |
+| **Phase 5: QVM Integration** | Complete | Google Cirq QVM oracle, Grover/Shor assessment |
 
 See [ROADMAP.md](./ROADMAP.md) for detailed phase breakdown.
 
@@ -149,6 +166,9 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for contract addresses and status.
 
 - [Roadmap](./ROADMAP.md) - Development phases and status
 - [Architecture](./docs/architecture/README.md) - System design and components
+- [QVM Integration](./docs/architecture/qvm_integration.md) - Quantum Virtual Machine oracle
+- [Phala TEE Integration](./docs/architecture/phala_integration.md) - Phala Network TEE sequencer
+- [Phala Deployment](./docs/deployment/PHALA_TEE.md) - Phala Cloud deployment guide
 - [Deployment](./docs/deployment/README.md) - Setup and deployment guides
 - [Directory Tree](./DIRECTORY_TREE.md) - Repository structure
 

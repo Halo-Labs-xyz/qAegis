@@ -1,0 +1,104 @@
+# QuantumAegis QVM (Quantum Virtual Machine) Configuration
+# Based on Google Cirq QVM with Willow processor noise models
+
+[processor]
+# Supported: "willow_pink", "weber", "rainbow", "custom"
+type = "willow_pink"
+
+# Custom processor settings (only used if type = "custom")
+[processor.custom]
+qubits = 105
+connectivity = "grid"  # "grid", "heavy_hex", "all_to_all", "linear"
+
+[simulation]
+# Default number of circuit repetitions
+# 10,000+ recommended for research
+# 3,000 for learning/testing
+# 1-10 for quick experiments
+default_repetitions = 3000
+
+# Enable quantum circuit simulation
+enable_circuits = true
+
+# Maximum qubits for state vector simulation (memory limited)
+max_qubits = 25
+
+# Use noise model from calibration data
+apply_noise = true
+
+[oracle]
+# Assessment interval in blocks
+assessment_interval_blocks = 100
+
+# Enable automatic era transitions based on threat level
+auto_era_transition = true
+
+# Risk thresholds (basis points: 0-10000)
+risk_threshold_scheduled = 6000
+risk_threshold_emergency = 9000
+
+[oracle.algorithms]
+# Symmetric algorithms to assess (Grover threat)
+symmetric = [
+    { name = "AES-128", bits = 128 },
+    { name = "AES-256", bits = 256 },
+    { name = "SHA-256", bits = 256 },
+    { name = "Keccak-256", bits = 256 },
+    { name = "SHAKE256", bits = 256 },
+]
+
+# Asymmetric algorithms to assess (Shor threat)
+asymmetric = [
+    { name = "RSA-2048", bits = 2048 },
+    { name = "RSA-4096", bits = 4096 },
+    { name = "ECDSA-secp256k1", bits = 256 },
+    { name = "ECDSA-P384", bits = 384 },
+    { name = "Ed25519", bits = 256 },
+    { name = "BLS12-381", bits = 381 },
+    { name = "X25519", bits = 256 },
+]
+
+[era_mapping]
+# Threat level to quantum era mapping
+# threat_score -> era
+# 0-3000: pre_quantum
+# 3001-6000: nisq
+# 6001-10000: fault_tolerant
+
+[protocol_stack]
+# Position in architecture
+# QVM sits between TEE Layer and Sequencer
+layer = "oracle"
+
+# Components contained in QVM layer
+components = ["qrms", "threat_oracle", "circuit_simulator"]
+
+# Bridge to Phala TEE
+tee_bridge_enabled = true
+tee_bridge_interval_ms = 1000
+
+# Bridge to Sequencer
+sequencer_bridge_enabled = true
+
+[logging]
+# Log quantum circuit executions
+log_circuits = true
+
+# Log threat assessments
+log_assessments = true
+
+# Log era transitions
+log_transitions = true
+
+# Verbosity level: "error", "warn", "info", "debug", "trace"
+level = "info"
+
+[performance]
+# Maximum concurrent circuit simulations
+max_concurrent_sims = 4
+
+# Circuit result cache size
+cache_size = 100
+
+# Enable parallel gate application
+parallel_gates = true
