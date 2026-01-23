@@ -20,6 +20,10 @@ mkdir -p _site
 if [ -d "services/qrms/target/doc" ]; then
     echo "Copying Rust documentation..."
     cp -r services/qrms/target/doc _site/rust
+    
+    # Inject mermaid.js into Rust docs
+    echo "Injecting mermaid.js into Rust documentation..."
+    python3 scripts/docs/inject-mermaid-rust-docs.py _site/rust
 fi
 
 # Convert markdown to HTML

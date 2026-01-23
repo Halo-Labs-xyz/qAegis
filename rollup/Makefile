@@ -98,6 +98,10 @@ test-qrms: ## Test QRMS API
 	@echo "Testing QRMS..."
 	@curl -s http://localhost:5050/api/status | jq . 2>/dev/null || echo "QRMS not running"
 
+test-e2e: ## Run end-to-end tests
+	@echo "Running end-to-end tests..."
+	@cd .. && bash scripts/test-e2e-simple.sh
+
 # ============================================================================
 # QRMS CLI
 # ============================================================================
