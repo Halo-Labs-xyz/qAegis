@@ -1,24 +1,42 @@
-# Phala Network TEE Integration
+# Phala Network TEE Integration (Redundancy Layer)
 
 ## Overview
 
-QuantumAegis integrates with Phala Network's TEE Cloud to provide hardware-backed security for quantum-resistant transaction sequencing.
+**Note**: This document describes Phala Network integration as a **redundancy/fallback layer** for Aegis-TEE.
+
+The primary TEE implementation is **Aegis-TEE** (see [Aegis-TEE Architecture](./aegis_tee.md)). Phala Network TEE Cloud is available as an optional redundancy mechanism that provides:
+
+- **Fallback Security**: Backup attestation and verification
+- **Distributed Verification**: Cross-validation between Aegis-TEE and Phala Network
+- **Enhanced Reliability**: Redundancy in case of Aegis-TEE infrastructure issues
+- **Network Diversity**: Multiple TEE platforms for defense in depth
+
+For new implementations, use `AegisTeeSequencer` with optional Phala redundancy enabled.
 
 ## Architecture
 
 ```mermaid
 graph TB
-    subgraph PhalaCloud["Phala Network TEE Cloud"]
-        subgraph Enclave["TEE Enclave TDX/SEV"]
-            SEQ[PhalaTeeSequencer]
+    subgraph AegisTEE["Aegis-TEE (Primary)"]
+        subgraph AegisEnclave["Aegis-TEE Enclave TDX/SEV/SGX"]
+            SEQ[AegisTeeSequencer]
             APQC[Adaptive PQC Layer]
             QRM[Quantum Resistance Monitor]
             ASSETS[Asset Registry]
             MIGRATION[Migration Manager]
         end
         
-        ATTEST[Phala Attestation]
-        QUOTE[TEE Quote Verification]
+        AEGIS_ATTEST[Aegis-TEE Attestation]
+        AEGIS_QUOTE[TEE Quote Verification]
+    end
+    
+    subgraph PhalaCloud["Phala Network TEE Cloud (Redundancy)"]
+        subgraph PhalaEnclave["Phala TEE Enclave TDX/SEV"]
+            PHALA_SEQ[Phala Redundancy Layer]
+        end
+        
+        PHALA_ATTEST[Phala Attestation]
+        PHALA_QUOTE[Phala Quote Verification]
     end
     
     subgraph External["External Systems"]
@@ -40,8 +58,12 @@ graph TB
     SEQ -->|Protect| ASSETS
     SEQ -->|Checkpoint| MIGRATION
     
-    SEQ -->|Attest| ATTEST
-    ATTEST -->|Verify| QUOTE
+    SEQ -->|Primary Attest| AEGIS_ATTEST
+    AEGIS_ATTEST -->|Verify| AEGIS_QUOTE
+    
+    SEQ -.->|Redundancy| PHALA_SEQ
+    PHALA_SEQ -->|Redundancy Attest| PHALA_ATTEST
+    PHALA_ATTEST -->|Verify| PHALA_QUOTE
     
     SEQ -->|Batches| OP_NODE
     SEQ -->|Updates| CONTRACTS
@@ -52,9 +74,9 @@ graph TB
 
 ## Components
 
-### PhalaTeeSequencer
+### AegisTeeSequencer (Primary)
 
-Core sequencer running inside Phala TEE enclave.
+Core sequencer running inside Aegis-TEE enclave. This is the primary TEE implementation.
 
 **Features:**
 - Encrypted mempool (decrypted only in TEE)
@@ -62,8 +84,19 @@ Core sequencer running inside Phala TEE enclave.
 - Asset protection registry
 - Migration checkpointing
 - Quantum-resistant batch signing
+- Optional Phala Network redundancy
 
-**Location:** `services/qrms/src/phala_tee.rs`
+**Location:** `services/qrms/src/aegis_tee.rs`
+
+### Phala Network Redundancy (Optional)
+
+When enabled, Phala Network provides:
+- Redundancy attestation for each batch
+- Cross-validation with Aegis-TEE attestation
+- Fallback verification in case of Aegis-TEE issues
+- Distributed security across multiple TEE platforms
+
+**Location:** `services/qrms/src/aegis_tee.rs` (PhalaRedundancyAttestation)
 
 ### Asset Protection
 
@@ -172,15 +205,27 @@ sequenceDiagram
 ### TEE Attestation
 
 ```rust
-pub struct PhalaAttestation {
+// Primary Aegis-TEE attestation
+pub struct AegisTeeAttestation {
     pub worker_id: String,
     pub enclave_id: String,
     pub quote: Vec<u8>,              // TEE quote
-    pub quote_type: String,           // "TDX" or "SEV"
+    pub quote_type: String,           // "TDX", "SEV", or "SGX"
     pub mr_enclave: String,          // Code measurement
     pub mr_signer: String,           // Signer measurement
     pub report_data: Vec<u8>,        // Batch hash
-    pub phala_verification: bool,    // Network verified
+    pub aegis_verification: bool,    // Aegis-TEE verified
+    pub phala_redundancy: Option<PhalaRedundancyAttestation>, // Optional Phala redundancy
+}
+
+// Phala Network redundancy attestation
+pub struct PhalaRedundancyAttestation {
+    pub worker_id: String,
+    pub enclave_id: String,
+    pub quote: Vec<u8>,
+    pub quote_type: String,
+    pub phala_verification: bool,    // Phala Network verified
+    pub timestamp: DateTime<Utc>,
 }
 ```
 

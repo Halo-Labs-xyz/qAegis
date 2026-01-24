@@ -3,7 +3,7 @@
 //! - QVM: Quantum Virtual Machine (Oracle Layer)
 //! - QRM: Quantum Resistance Monitor
 //! - APQC: Adaptive PQC Layer
-//! - TEE Sequencer (Phala Network)
+//! - TEE Sequencer (Aegis-TEE with Phala redundancy)
 //! - Chain State
 //!
 //! Architecture:
@@ -27,11 +27,15 @@
 //! │  └───────────────────────────┼─────────────────────────────┘    │
 //! │                              ▼                                  │
 //! │  ┌─────────────────────────────────────────────────────────┐    │
-//! │  │           PHALA TEE LAYER (phala_tee.rs)                │    │
+//! │  │           AEGIS-TEE LAYER (aegis_tee.rs)                │    │
 //! │  │  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌─────────┐  │    │
 //! │  │  │ Encrypted │ │  Asset    │ │ Migration │ │ Intelli │  │    │
 //! │  │  │  Mempool  │ │Protection │ │  System   │ │ Order   │  │    │
 //! │  │  └───────────┘ └───────────┘ └───────────┘ └─────────┘  │    │
+//! │  │                              │                            │    │
+//! │  │  ┌───────────────────────────▼────────────────────────┐  │    │
+//! │  │  │      Phala Network Redundancy (Optional)          │  │    │
+//! │  │  └───────────────────────────────────────────────────┘  │    │
 //! │  └─────────────────────────────────────────────────────────┘    │
 //! │                              ▼                                  │
 //! │  ┌─────────────────────────────────────────────────────────┐    │
@@ -50,7 +54,9 @@ mod qrm;
 mod apqc;
 mod crypto;
 mod sequencer;
-mod phala_tee;
+mod aegis_tee;
+#[allow(deprecated)]
+mod phala_tee; // Deprecated: kept for backward compatibility, use aegis_tee instead
 mod phala_deploy;
 mod chain;
 mod state;

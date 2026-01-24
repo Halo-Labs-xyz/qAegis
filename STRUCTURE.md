@@ -18,17 +18,23 @@ quantum-aegis/
 ├── services/                 # Rust Services
 │   └── qrms/
 │       ├── Cargo.toml
+│       ├── qvm.toml             # QVM configuration
+│       ├── phala.toml           # Phala redundancy config
 │       ├── src/
 │       │   ├── main.rs          # Server entry
 │       │   ├── bin/
 │       │   │   └── qrms-cli.rs # Terminal UI
 │       │   ├── qrm.rs          # Threat monitor
+│       │   ├── qvm.rs          # Quantum Virtual Machine
 │       │   ├── apqc.rs         # PQC layer
 │       │   ├── crypto.rs       # Real PQC impl
-│       │   ├── sequencer.rs    # TEE sequencer
+│       │   ├── aegis_tee.rs    # Aegis-TEE sequencer (primary)
+│       │   ├── phala_tee.rs    # Phala TEE (deprecated, redundancy)
+│       │   ├── phala_deploy.rs # Phala deployment config
+│       │   ├── sequencer.rs    # Base sequencer
 │       │   ├── chain.rs        # Chain state
 │       │   ├── state.rs        # App state
-│       │   └── handlers.rs    # HTTP/WS handlers
+│       │   └── handlers.rs     # HTTP/WS handlers
 │       └── static/             # Web GUI
 │
 ├── contracts/                # Solidity Contracts
@@ -81,9 +87,11 @@ quantum-aegis/
 **Language**: Rust  
 **Purpose**: Core QRMS monitoring and PQC operations
 
+- **QVM**: Quantum Virtual Machine oracle (Grover/Shor threat assessment)
 - **QRM**: 12-category threat monitoring, risk scoring
 - **APQC**: Real PQC signatures (ML-DSA, SLH-DSA), hybrid ECDSA
-- **Sequencer**: TEE-secured batching and ordering
+- **Aegis-TEE**: Primary TEE sequencer (TDX/SEV/SGX)
+- **Phala Redundancy**: Optional Phala Network fallback
 - **Chain**: L2 state integration
 
 ### Contracts (`contracts/`)
@@ -116,10 +124,11 @@ quantum-aegis/
 
 ## Key Features
 
-- PQC cryptography (ML-DSA-87, SLH-DSA-256s)
-- Hybrid ECDSA + PQC signatures
-- 12-category threat monitoring
-- Adaptive algorithm rotation
-- TEE sequencer integration
-- OP Stack L2 deployment
-- Web GUI + CLI interfaces
+- **QVM Oracle**: Google Cirq-based quantum threat assessment
+- **PQC Cryptography**: ML-DSA-87, SLH-DSA-256s (real implementations)
+- **Hybrid Signatures**: ECDSA + PQC dual signatures
+- **12-Category Threat Monitoring**: Comprehensive quantum risk assessment
+- **Adaptive Algorithm Rotation**: Automatic PQC upgrades based on risk
+- **Aegis-TEE Sequencer**: Primary TEE with Phala redundancy
+- **OP Stack L2**: Full rollup deployment with Docker orchestration
+- **Web GUI + CLI**: Real-time monitoring interfaces

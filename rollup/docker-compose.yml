@@ -10,8 +10,8 @@ services:
   
   qrms:
     build:
-      context: ../qrms-rust
-      dockerfile: ../rollup/docker/Dockerfile.qrms
+      context: ../services/qrms
+      dockerfile: Dockerfile
     container_name: qrms
     restart: unless-stopped
     ports:
@@ -37,7 +37,7 @@ services:
   # ==========================================================================
   
   op-geth:
-    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101511.1
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth:v1.101605.0
     container_name: op-geth
     volumes:
       - ./sequencer:/workspace
@@ -74,7 +74,7 @@ services:
       - qrms-net
 
   op-node:
-    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.13.5
+    image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node:v1.16.5
     container_name: op-node
     volumes:
       - ./sequencer:/workspace
@@ -123,6 +123,7 @@ services:
     profiles: ["infra"]
     volumes:
       - ./batcher:/workspace
+      - ./deployer/.deployer:/deployer:ro
     working_dir: /workspace
     env_file:
       - .env
@@ -131,6 +132,8 @@ services:
       - OP_BATCHER_PRIVATE_KEY=${PRIVATE_KEY}
     command: >
       op-batcher
+      --l2-eth-rpc=http://op-geth:8545
+      --rollup-rpc=http://op-node:8547
       --rpc.addr=0.0.0.0
       --rpc.port=8548
       --rpc.enable-admin
@@ -155,12 +158,14 @@ services:
     profiles: ["infra"]
     volumes:
       - ./proposer:/workspace
+      - ./deployer/.deployer:/deployer:ro
     working_dir: /workspace
     env_file:
       - .env
     environment:
       - OP_PROPOSER_L1_ETH_RPC=${L1_RPC_URL}
       - OP_PROPOSER_PRIVATE_KEY=${PRIVATE_KEY}
+      - OP_PROPOSER_GAME_FACTORY_ADDRESS=${DISPUTE_GAME_FACTORY:-0xfa69226f178a64a9cd82175020035b5fe509c1f0}
     command: >
       op-proposer
       --rpc.port=8560
@@ -179,12 +184,17 @@ services:
   # OP Stack: Challenger
   # ==========================================================================
   
+  # Note: op-challenger requires cannon prestates which are not included in this setup.
+  # For production, download prestates from: https://github.com/ethereum-optimism/optimism/releases
+  # and configure --prestates-url or --cannon-prestate
   challenger:
     image: us-docker.pkg.dev/oplabs-tools-artifacts/images/op-challenger:v1.5.1
     container_name: op-challenger
-    profiles: ["infra"]
+    profiles: ["challenger"]  # Separate profile - requires prestates setup
     volumes:
       - ./challenger:/workspace
+      - ./sequencer:/sequencer:ro
+      - ./deployer/.deployer:/deployer:ro
     working_dir: /workspace
     env_file:
       - .env
@@ -192,13 +202,13 @@ services:
       - OP_CHALLENGER_L1_ETH_RPC=${L1_RPC_URL}
       - OP_CHALLENGER_L1_BEACON=${L1_BEACON_URL}
       - OP_CHALLENGER_PRIVATE_KEY=${PRIVATE_KEY}
+      - OP_CHALLENGER_GAME_FACTORY_ADDRESS=${DISPUTE_GAME_FACTORY:-0xfa69226f178a64a9cd82175020035b5fe509c1f0}
     command: >
-      op-challenger run-trace
-      --trace-type=cannon
-      --cannon-l2-genesis=/workspace/genesis.json
-      --cannon-rollup-config=/workspace/rollup.json
+      op-challenger
       --l2-eth-rpc=http://op-geth:8545
       --rollup-rpc=http://op-node:8547
+      --rollup-config=/sequencer/rollup.json
+      --l2-genesis=/sequencer/genesis.json
       --datadir=/workspace/data
       --log.level=info
       --log.format=json
@@ -218,6 +228,7 @@ services:
     profiles: ["infra"]
     volumes:
       - ./dispute-mon:/workspace
+      - ./deployer/.deployer:/deployer:ro
     working_dir: /workspace
     ports:
       - "7300:7300"
@@ -226,8 +237,8 @@ services:
     environment:
       - OP_DISPUTE_MON_L1_ETH_RPC=${L1_RPC_URL}
       - OP_DISPUTE_MON_ROLLUP_RPC=http://op-node:8547
+      - OP_DISPUTE_MON_GAME_FACTORY_ADDRESS=${DISPUTE_GAME_FACTORY:-0xfa69226f178a64a9cd82175020035b5fe509c1f0}
       - OP_DISPUTE_MON_MONITOR_INTERVAL=10s
-      - OP_DISPUTE_MON_NETWORK=op-sepolia
       - OP_DISPUTE_MON_LOG_LEVEL=debug
       - OP_DISPUTE_MON_LOG_FORMAT=logfmt
       - OP_DISPUTE_MON_METRICS_ADDR=0.0.0.0

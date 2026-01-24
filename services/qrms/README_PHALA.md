@@ -1,8 +1,12 @@
-# Phala Network TEE Integration
+# Phala Network TEE Integration (Redundancy Layer)
 
 ## Overview
 
-QuantumAegis sequencer with Phala Network TEE Cloud integration provides hardware-backed security for quantum-resistant transaction sequencing.
+**Note**: This document describes Phala Network integration as a **redundancy/fallback layer** for Aegis-TEE. 
+
+The primary TEE implementation is **Aegis-TEE** (see [README_AEGIS_TEE.md](./README_AEGIS_TEE.md)). Phala Network TEE Cloud is available as an optional redundancy mechanism for enhanced reliability and distributed security verification.
+
+For new implementations, use `AegisTeeSequencer` with optional Phala redundancy enabled.
 
 ## Features
 
@@ -55,11 +59,25 @@ See [Phala Deployment Guide](../../docs/deployment/PHALA_TEE.md)
 
 ## API Usage
 
-### Initialize Sequencer
+### Initialize Sequencer (Recommended: Use Aegis-TEE with Phala Redundancy)
 
 ```rust
-use qrms::phala_tee::PhalaTeeSequencer;
+// Recommended: Use Aegis-TEE with Phala redundancy
+use qrms::aegis_tee::AegisTeeSequencer;
 
+let mut sequencer = AegisTeeSequencer::new(
+    "aegis_worker_0".to_string(),
+    "aegis_enclave_0".to_string(),
+    "TDX".to_string(),
+    Some((
+        "phala_worker_0".to_string(),  // Phala redundancy
+        "phala_enclave_0".to_string(),
+    )),
+);
+
+// Legacy (deprecated): Direct Phala-only usage
+#[allow(deprecated)]
+use qrms::phala_tee::PhalaTeeSequencer;
 let mut sequencer = PhalaTeeSequencer::new(
     "worker_id".to_string(),
     "enclave_id".to_string(),
@@ -70,7 +88,7 @@ let mut sequencer = PhalaTeeSequencer::new(
 ### Register Asset
 
 ```rust
-use qrms::phala_tee::{AssetProtection, AssetType, AccessPolicy, MigrationState};
+use qrms::aegis_tee::{AssetProtection, AssetType, AccessPolicy, MigrationState};
 
 let asset = AssetProtection {
     asset_id: "token_001".to_string(),
@@ -93,7 +111,7 @@ sequencer.register_asset(asset);
 ### Submit Transaction
 
 ```rust
-use qrms::phala_tee::EncryptedTransaction;
+use qrms::aegis_tee::EncryptedTransaction;
 
 let encrypted_tx = EncryptedTransaction {
     tx_id: "tx_001".to_string(),
@@ -149,6 +167,7 @@ if let Some(checkpoint) = batch.migration_checkpoint {
 
 ## Documentation
 
-- [Phala Integration](../../docs/architecture/phala_integration.md)
+- **[Aegis-TEE (Primary)](./README_AEGIS_TEE.md)** - Recommended for new implementations
+- [Phala Integration (Redundancy)](../../docs/architecture/phala_integration.md)
 - [Phala Deployment](../../docs/deployment/PHALA_TEE.md)
 - [TEE Architecture](../../docs/architecture/phase3_tee.md)

@@ -9,21 +9,22 @@ Based on: `opstack/docs/create-l2-rollup-example/`
 ```bash
 cd rollup
 
-# 1. Initialize
-make init
-
-# 2. Configure
+# Option 1: Full end-to-end setup (recommended)
+cp env.example .env
 # Edit .env with L1_RPC_URL, L1_BEACON_URL, PRIVATE_KEY
+make all          # Downloads, deploys, configures, starts everything
 
-# 3. Setup (deploys L1 contracts, generates configs)
-make setup
+# Option 2: Step-by-step
+make init         # Download op-deployer, create .env
+make setup        # Deploy L1 contracts, generate configs
+make up           # Start L2 + QRMS
 
-# 4. Start
-make up
-
-# 5. Verify
+# Verify
 make test-l2      # L2 RPC
 make test-qrms    # QRMS API
+
+# Start infrastructure services (batcher, proposer, etc.)
+docker-compose --profile infra up -d
 ```
 
 ## Architecture
@@ -83,12 +84,14 @@ rollup/
 
 ## Services
 
-| Service | Port | Description |
-|---------|------|-------------|
-| qrms | 5050 | QRMS REST + WebSocket |
-| op-geth | 8545 | L2 JSON-RPC |
-| op-node | 8547 | Rollup RPC |
-| dispute-mon | 7300 | Metrics |
+| Service | Port | Description | Docker Image |
+|---------|------|-------------|--------------|
+| op-geth | 8545, 8546, 8551 | L2 Execution Engine | `op-geth:v1.101605.0` |
+| op-node | 8547, 9222 | L2 Consensus/Sequencer | `op-node:v1.16.5` |
+| qrms | 5050, 9090 | QRMS REST + gRPC | Custom Rust |
+| op-batcher | - | Batch Submitter (infra profile) | `op-batcher:v1.14.0` |
+| op-proposer | - | Output Proposer (infra profile) | `op-proposer:v1.10.0` |
+| dispute-mon | 7300 | Dispute Monitor (infra profile) | `op-dispute-mon:v1.4.2-rc.1` |
 
 ## Commands
 

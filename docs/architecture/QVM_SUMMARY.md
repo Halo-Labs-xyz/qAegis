@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Quantum Virtual Machine (QVM) serves as the **overarching protocol stack** layer between the Phala TEE and the Sequencer, containing and enhancing the QRMS.
+The Quantum Virtual Machine (QVM) serves as the **overarching protocol stack** layer between the Aegis-TEE and the Sequencer, containing and enhancing the QRMS.
 
 ## Architecture Position
 
@@ -24,7 +24,7 @@ The Quantum Virtual Machine (QVM) serves as the **overarching protocol stack** l
 │  └─────────────────────────────┼───────────────────────────┘    │
 │                                ▼                                │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │              PHALA TEE LAYER  (below)                   │    │
+│  │              AEGIS-TEE LAYER  (below)                   │    │
 │  └─────────────────────────────────────────────────────────┘    │
 │                                ▼                                │
 │  ┌─────────────────────────────────────────────────────────┐    │
@@ -82,7 +82,7 @@ The Quantum Virtual Machine (QVM) serves as the **overarching protocol stack** l
 ### 5. Protocol Stack Integration
 - Automatic era transitions (PreQuantum → Nisq → FaultTolerant)
 - Threat indicator generation for QRMS
-- Bridge to Phala TEE Sequencer
+- Bridge to Aegis-TEE Sequencer
 - Recommended algorithm selection
 
 ## Threat Levels
@@ -174,7 +174,7 @@ println!("Avoid these qubits: {:?}", result.avoid_qubits);
    ↓
 5. Era transition if thresholds crossed
    ↓
-6. Threat indicators bridged to Phala TEE
+6. Threat indicators bridged to Aegis-TEE
    ↓
 7. TEE updates intelligence ordering
 ```

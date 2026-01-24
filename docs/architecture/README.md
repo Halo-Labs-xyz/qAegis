@@ -7,7 +7,7 @@ QuantumAegis is a quantum-resistant blockchain protocol that combines:
 1. **Quantum Virtual Machine (QVM)**: Google Cirq-based oracle for quantum threat assessment
 2. **Quantum Resistance Monitor (QRM)**: Proactive threat detection across 12 categories
 3. **Adaptive PQC Layer (APQC)**: Dual signature scheme (ML-DSA-87 + SLH-DSA-256s) with hybrid ECDSA
-4. **TEE Sequencer**: Phala Network TEE for secure transaction ordering
+4. **TEE Sequencer**: Aegis-TEE (TDX/SEV/SGX) with Phala Network redundancy
 5. **OP Stack L2**: EVM-compatible rollup with full L1 data availability
 
 ## Protocol Stack
@@ -18,7 +18,7 @@ QuantumAegis is a quantum-resistant blockchain protocol that combines:
 ├─────────────────────────────────────────────────────────────────┤
 │  QVM Oracle Layer     │ Quantum circuit simulation, threat oracle│
 │  QRMS Layer          │ QRM + APQC, 12 threat categories          │
-│  Phala TEE Layer     │ Encrypted mempool, asset protection       │
+│  Aegis-TEE Layer     │ Encrypted mempool, Phala redundancy       │
 │  Blockchain Layer    │ OP Stack L2, smart contracts              │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -28,7 +28,7 @@ QuantumAegis is a quantum-resistant blockchain protocol that combines:
 | Phase | Status | Documentation |
 |-------|--------|---------------|
 | Phase 2: Cryptography | In Progress | [phase2_cryptography.md](./phase2_cryptography.md) |
-| Phase 3: TEE | Phala Ready | [phala_integration.md](./phala_integration.md), [phase3_tee.md](./phase3_tee.md) |
+| Phase 3: TEE | Complete | [aegis_tee.md](./aegis_tee.md), [phala_integration.md](./phala_integration.md) |
 | Phase 4: Threat Intelligence | Simulated | [phase4_threat_intelligence.md](./phase4_threat_intelligence.md) |
 | Phase 5: QVM Integration | Complete | [qvm_integration.md](./qvm_integration.md) |
 
@@ -46,13 +46,14 @@ QuantumAegis is a quantum-resistant blockchain protocol that combines:
 - Shor's algorithm threat assessment (public key crypto)
 - Automatic quantum era transitions
 
-## Phala Network TEE
+## TEE Layer (Aegis-TEE + Phala Redundancy)
 
 **Status:** Implementation Complete
 
-- [Phala Integration Summary](./PHALA_SUMMARY.md) - Quick overview
-- [Phala Integration Guide](./phala_integration.md) - Detailed architecture
-- [Phala Deployment Guide](../deployment/PHALA_TEE.md) - Deployment instructions
+- [Aegis-TEE Architecture](./aegis_tee.md) - Primary TEE implementation
+- [Phala Redundancy](./phala_integration.md) - Phala Network fallback layer
+- [TEE Deployment Guide](../deployment/PHALA_TEE.md) - Deployment instructions
+- [TEE Summary](./PHALA_SUMMARY.md) - Quick overview
 
 ## Core Documents
 
@@ -79,8 +80,8 @@ graph TB
         QRM --> APQC
     end
     
-    subgraph TEELayer["Phala TEE Layer"]
-        TEE["Phala TEE Sequencer<br/>• TDX/SEV Enclaves<br/>• Encrypted Mempool<br/>• Asset Protection<br/>• Intelligence Ordering"]
+    subgraph TEELayer["Aegis-TEE Layer"]
+        TEE["Aegis-TEE Sequencer<br/>• TDX/SEV/SGX Enclaves<br/>• Encrypted Mempool<br/>• Asset Protection<br/>• Phala Redundancy"]
         APQC --> TEE
     end
     

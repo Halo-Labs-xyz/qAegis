@@ -1,24 +1,17 @@
-//! Phala Network TEE Sequencer (DEPRECATED)
-//! 
-//! **This module is deprecated. Use `aegis_tee` instead.**
-//! 
-//! This module is kept for backward compatibility. The primary TEE implementation
-//! is now `aegis_tee::AegisTeeSequencer`, which uses Aegis-TEE as the primary
-//! infrastructure with Phala Network as an optional redundancy/fallback layer.
-//!
-//! For new code, use:
-//! ```rust
-//! use qrms::aegis_tee::AegisTeeSequencer;
-//! ```
-//!
+//! Aegis-TEE: Primary Trusted Execution Environment Sequencer
 //! Quantum-resistant transaction ordering with asset protection and state migration
 //!
 //! Architecture:
-//! - Runs as Phat Contract on Phala Cloud TEE workers (now used as redundancy)
+//! - Primary: Aegis-TEE (self-hosted TEE infrastructure)
+//! - Redundancy: Phala Network TEE Cloud (fallback/redundancy layer)
 //! - Encrypted mempool with threshold encryption
 //! - Quantum-resistant batch signing (ML-DSA-87 + SLH-DSA-256s)
 //! - Asset protection for on-chain and off-chain data
 //! - State migration for seamless upgrades
+//!
+//! The Aegis-TEE module provides the primary TEE sequencer implementation.
+//! Phala Network integration is available as a redundancy/fallback mechanism
+//! for enhanced reliability and distributed security.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Digest};
@@ -29,18 +22,30 @@ use std::collections::{VecDeque, HashMap};
 use crate::apqc::AdaptivePqcLayer;
 use crate::qrm::{QuantumResistanceMonitor, RiskAssessment};
 
-/// Phala TEE attestation (TDX/SEV)
+/// Aegis-TEE attestation (TDX/SEV/SGX)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PhalaAttestation {
+pub struct AegisTeeAttestation {
     pub worker_id: String,
     pub enclave_id: String,
     pub quote: Vec<u8>,              // TEE quote bytes
-    pub quote_type: String,           // "TDX" or "SEV"
+    pub quote_type: String,           // "TDX", "SEV", or "SGX"
     pub mr_enclave: String,           // Measurement of enclave code
     pub mr_signer: String,            // Measurement of signer
     pub report_data: Vec<u8>,         // Custom report data (batch hash)
     pub timestamp: DateTime<Utc>,
-    pub phala_verification: bool,     // Verified by Phala network
+    pub aegis_verification: bool,      // Verified by Aegis-TEE infrastructure
+    pub phala_redundancy: Option<PhalaRedundancyAttestation>, // Optional Phala redundancy
+}
+
+/// Phala Network redundancy attestation (for fallback/redundancy)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PhalaRedundancyAttestation {
+    pub worker_id: String,
+    pub enclave_id: String,
+    pub quote: Vec<u8>,
+    pub quote_type: String,
+    pub phala_verification: bool,
+    pub timestamp: DateTime<Utc>,
 }
 
 /// Asset protection metadata
@@ -121,7 +126,7 @@ pub struct QuantumResistantBatch {
     pub transactions: Vec<DecryptedTransaction>,
     pub ml_dsa_sig: String,
     pub slh_dsa_sig: String,
-    pub attestation: PhalaAttestation,
+    pub attestation: AegisTeeAttestation,
     pub risk_assessment: RiskAssessment,
     pub asset_protections: Vec<AssetProtection>,
     pub migration_checkpoint: Option<MigrationCheckpoint>,
@@ -147,8 +152,14 @@ pub enum IntelligenceOrdering {
     Hybrid,                            // Combine multiple strategies
 }
 
-/// Phala TEE Sequencer
-pub struct PhalaTeeSequencer {
+/// Aegis-TEE Sequencer (Primary TEE Implementation)
+/// 
+/// This is the primary TEE sequencer for QuantumAegis. It provides secure
+/// transaction ordering within a trusted execution environment.
+/// 
+/// Phala Network integration is available as an optional redundancy layer
+/// for enhanced reliability and distributed security.
+pub struct AegisTeeSequencer {
     // Encrypted mempool (only decrypted inside TEE)
     encrypted_mempool: VecDeque<EncryptedTransaction>,
     
@@ -168,15 +179,36 @@ pub struct PhalaTeeSequencer {
     current_block: u64,
     batch_size: usize,
     
-    // Phala-specific
+    // Aegis-TEE specific
     worker_id: String,
     enclave_id: String,
-    tee_platform: String,              // "TDX" or "SEV"
+    tee_platform: String,              // "TDX", "SEV", or "SGX"
+    
+    // Phala redundancy configuration
+    phala_redundancy_enabled: bool,
+    phala_worker_id: Option<String>,
+    phala_enclave_id: Option<String>,
 }
 
-impl PhalaTeeSequencer {
-    /// Initialize Phala TEE sequencer
-    pub fn new(worker_id: String, enclave_id: String, tee_platform: String) -> Self {
+impl AegisTeeSequencer {
+    /// Initialize Aegis-TEE sequencer
+    /// 
+    /// # Arguments
+    /// * `worker_id` - Aegis-TEE worker identifier
+    /// * `enclave_id` - Aegis-TEE enclave identifier
+    /// * `tee_platform` - TEE platform type ("TDX", "SEV", or "SGX")
+    /// * `phala_redundancy` - Optional Phala redundancy configuration
+    pub fn new(
+        worker_id: String,
+        enclave_id: String,
+        tee_platform: String,
+        phala_redundancy: Option<(String, String)>,
+    ) -> Self {
+        let (phala_enabled, phala_worker, phala_enclave) = match phala_redundancy {
+            Some((w, e)) => (true, Some(w), Some(e)),
+            None => (false, None, None),
+        };
+
         Self {
             encrypted_mempool: VecDeque::with_capacity(10000),
             asset_registry: HashMap::new(),
@@ -190,6 +222,9 @@ impl PhalaTeeSequencer {
             worker_id,
             enclave_id,
             tee_platform,
+            phala_redundancy_enabled: phala_enabled,
+            phala_worker_id: phala_worker,
+            phala_enclave_id: phala_enclave,
         }
     }
 
@@ -204,7 +239,7 @@ impl PhalaTeeSequencer {
     }
 
     /// Decrypt and order transactions (inside TEE only)
-    /// This function simulates TEE operation - in production, runs inside Phala enclave
+    /// This function simulates TEE operation - in production, runs inside Aegis-TEE enclave
     pub fn decrypt_and_order_intelligent(
         &mut self,
         tee_key: &[u8],  // TEE-protected decryption key
@@ -394,8 +429,8 @@ impl PhalaTeeSequencer {
         // Sign with dual PQC
         let signatures = apqc.sign_dual(&batch_data).await;
 
-        // Generate Phala attestation
-        let attestation = self.generate_phala_attestation(&batch_id);
+        // Generate Aegis-TEE attestation (with optional Phala redundancy)
+        let attestation = self.generate_aegis_attestation(&batch_id);
 
         // Create migration checkpoint if needed
         let checkpoint = if self.migration_in_progress {
@@ -423,8 +458,8 @@ impl PhalaTeeSequencer {
         Some(batch)
     }
 
-    /// Generate Phala TEE attestation
-    fn generate_phala_attestation(&self, batch_id: &str) -> PhalaAttestation {
+    /// Generate Aegis-TEE attestation (with optional Phala redundancy)
+    fn generate_aegis_attestation(&self, batch_id: &str) -> AegisTeeAttestation {
         let mut hasher = Sha256::new();
         hasher.update(batch_id.as_bytes());
         hasher.update(&self.current_block.to_be_bytes());
@@ -432,18 +467,25 @@ impl PhalaTeeSequencer {
         let report_data = hasher.finalize().to_vec();
 
         let mut mrenclave_hasher = Sha256::new();
-        mrenclave_hasher.update(b"QuantumAegis-Phala-Enclave");
+        mrenclave_hasher.update(b"QuantumAegis-AegisTEE-Enclave");
         mrenclave_hasher.update(self.enclave_id.as_bytes());
         let mr_enclave = hex::encode(&mrenclave_hasher.finalize()[..16]);
 
         let mut mrsigner_hasher = Sha256::new();
-        mrsigner_hasher.update(b"QuantumAegis-Signer");
+        mrsigner_hasher.update(b"QuantumAegis-AegisTEE-Signer");
         let mr_signer = hex::encode(&mrsigner_hasher.finalize()[..16]);
 
-        // Simulated quote (in production, get from Phala TEE)
+        // Simulated quote (in production, get from Aegis-TEE)
         let quote = report_data.clone();
 
-        PhalaAttestation {
+        // Generate optional Phala redundancy attestation
+        let phala_redundancy = if self.phala_redundancy_enabled {
+            Some(self.generate_phala_redundancy_attestation(batch_id))
+        } else {
+            None
+        };
+
+        AegisTeeAttestation {
             worker_id: self.worker_id.clone(),
             enclave_id: self.enclave_id.clone(),
             quote,
@@ -452,7 +494,25 @@ impl PhalaTeeSequencer {
             mr_signer,
             report_data,
             timestamp: Utc::now(),
+            aegis_verification: true,
+            phala_redundancy,
+        }
+    }
+
+    /// Generate Phala Network redundancy attestation (for fallback/redundancy)
+    fn generate_phala_redundancy_attestation(&self, batch_id: &str) -> PhalaRedundancyAttestation {
+        let mut hasher = Sha256::new();
+        hasher.update(batch_id.as_bytes());
+        hasher.update(self.phala_enclave_id.as_ref().unwrap().as_bytes());
+        let quote = hasher.finalize().to_vec();
+
+        PhalaRedundancyAttestation {
+            worker_id: self.phala_worker_id.as_ref().unwrap().clone(),
+            enclave_id: self.phala_enclave_id.as_ref().unwrap().clone(),
+            quote,
+            quote_type: self.tee_platform.clone(),
             phala_verification: true,
+            timestamp: Utc::now(),
         }
     }
 
@@ -524,14 +584,25 @@ impl PhalaTeeSequencer {
     pub fn get_recent_batches(&self, count: usize) -> Vec<QuantumResistantBatch> {
         self.batches.iter().rev().take(count).cloned().collect()
     }
+
+    /// Enable or disable Phala redundancy
+    pub fn set_phala_redundancy(&mut self, enabled: bool, worker_id: Option<String>, enclave_id: Option<String>) {
+        self.phala_redundancy_enabled = enabled;
+        self.phala_worker_id = worker_id;
+        self.phala_enclave_id = enclave_id;
+    }
 }
 
-impl Default for PhalaTeeSequencer {
+impl Default for AegisTeeSequencer {
     fn default() -> Self {
         Self::new(
-            "worker_0".to_string(),
-            "enclave_0".to_string(),
+            "aegis_worker_0".to_string(),
+            "aegis_enclave_0".to_string(),
             "TDX".to_string(),
+            None, // No Phala redundancy by default
         )
     }
 }
+
+// Re-export for backward compatibility and Phala integration
+pub use crate::phala_deploy::PhalaDeploymentConfig;

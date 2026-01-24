@@ -2,7 +2,7 @@
 name = "qrms"
 version = "0.1.0"
 edition = "2021"
-description = "Quantum Resistance Model System - Low Fidelity Prototype"
+description = "Quantum Resistance Model System - Low Fidelity Prototype. Primary TEE: Aegis-TEE with optional Phala Network redundancy."
 
 [dependencies]
 # Async runtime

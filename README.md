@@ -11,7 +11,7 @@ QuantumAegis combines:
 - **Quantum Virtual Machine (QVM)**: Google Cirq-based oracle for threat assessment
 - **Quantum Resistance Monitor (QRM)**: Threat detection across 12 categories
 - **Adaptive PQC Layer**: ML-DSA-87, SLH-DSA-256s, and hybrid ECDSA signatures
-- **TEE Sequencer**: Phala Network TEE for secure transaction ordering
+- **TEE Sequencer**: Aegis-TEE (TDX/SEV/SGX) with Phala Network redundancy
 - **OP Stack L2**: EVM-compatible rollup with full L1 data availability
 
 ## Architecture
@@ -35,10 +35,12 @@ graph TB
     end
     
     subgraph TEELayer["TEE Layer"]
-        TEE["Phala TEE<br/>TDX/SEV"]
+        TEE["Aegis-TEE<br/>TDX/SEV/SGX"]
         MEMPOOL["Encrypted<br/>Mempool"]
+        PHALA["Phala<br/>Redundancy"]
         APQC --> TEE
         MEMPOOL --> TEE
+        TEE -.-> PHALA
     end
     
     subgraph ChainLayer["Blockchain Layer"]
@@ -146,7 +148,7 @@ cargo run --release
 |-------|--------|-------------|
 | **Phase 1: Foundation** | Complete | OP Stack L2, QRMS service, contracts, dashboard |
 | **Phase 2: Real Cryptography** | In Progress | ML-DSA, SLH-DSA done; ML-KEM, HQC mocked |
-| **Phase 3: TEE Integration** | Phala Ready | Phala Network TEE sequencer with asset protection |
+| **Phase 3: TEE Integration** | Complete | Aegis-TEE sequencer (Phala redundancy) with asset protection |
 | **Phase 4: Threat Intelligence** | Simulated | 12 categories done, external feeds pending |
 | **Phase 5: QVM Integration** | Complete | Google Cirq QVM oracle, Grover/Shor assessment |
 
@@ -167,8 +169,9 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for contract addresses and status.
 - [Roadmap](./ROADMAP.md) - Development phases and status
 - [Architecture](./docs/architecture/README.md) - System design and components
 - [QVM Integration](./docs/architecture/qvm_integration.md) - Quantum Virtual Machine oracle
-- [Phala TEE Integration](./docs/architecture/phala_integration.md) - Phala Network TEE sequencer
-- [Phala Deployment](./docs/deployment/PHALA_TEE.md) - Phala Cloud deployment guide
+- [Aegis-TEE Architecture](./docs/architecture/aegis_tee.md) - Primary TEE sequencer
+- [Phala Redundancy](./docs/architecture/phala_integration.md) - Phala Network redundancy layer
+- [TEE Deployment](./docs/deployment/PHALA_TEE.md) - TEE deployment guide
 - [Deployment](./docs/deployment/README.md) - Setup and deployment guides
 - [Directory Tree](./DIRECTORY_TREE.md) - Repository structure
 

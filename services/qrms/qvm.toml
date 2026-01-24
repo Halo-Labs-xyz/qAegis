@@ -73,7 +73,7 @@ layer = "oracle"
 # Components contained in QVM layer
 components = ["qrms", "threat_oracle", "circuit_simulator"]
 
-# Bridge to Phala TEE
+# Bridge to Aegis-TEE (with optional Phala redundancy)
 tee_bridge_enabled = true
 tee_bridge_interval_ms = 1000
 

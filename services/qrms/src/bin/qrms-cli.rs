@@ -1,6 +1,7 @@
 //! QRMS CLI - Terminal User Interface
 //! 
 //! Multi-pane view of all QRMS processes:
+//! - QVM: Quantum Virtual Machine with real-time circuit visualization
 //! - QRM threat indicators + risk scores
 //! - APQC algorithm status + signatures
 //! - Sequencer mempool + batches
@@ -8,7 +9,6 @@
 //! - Event stream
 
 use std::io::{self, stdout};
-use std::sync::Arc;
 use std::time::Duration;
 use crossterm::{
     event::{self, Event, KeyCode, KeyModifiers},
@@ -20,14 +20,13 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Gauge, Tabs, Wrap},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Tabs},
     Frame, Terminal,
 };
 use tokio::sync::mpsc;
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
+use serde::Deserialize;
 
 // ============================================================================
 // Data Structures
@@ -39,6 +38,20 @@ struct StatusResponse {
     apqc: ApqcStatus,
     sequencer: SequencerStatus,
     chain: ChainStatus,
+    #[serde(default)]
+    qvm: Option<QvmStatus>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct QvmStatus {
+    processor: String,
+    current_era: String,
+    qrm_risk_score: u32,
+    oracle_risk_score: u32,
+    assessments_count: usize,
+    era_transitions: usize,
+    threat_indicators_count: usize,
+    recommended_algorithms: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -138,6 +151,43 @@ struct BlockInfo {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+struct QuantumGate {
+    gate_type: String,
+    qubits: Vec<usize>,
+    #[serde(default)]
+    angle: Option<f64>,
+    #[serde(default)]
+    moment: usize,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct QuantumCircuit {
+    id: String,
+    name: String,
+    qubits: usize,
+    gates: Vec<QuantumGate>,
+    #[serde(default)]
+    current_moment: usize,
+    #[serde(default)]
+    execution_progress: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct CircuitResult {
+    circuit_id: String,
+    repetitions: usize,
+    histogram: std::collections::HashMap<String, usize>,
+    execution_time_ms: f64,
+    fidelity_estimate: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct QvmCircuitUpdate {
+    circuit: QuantumCircuit,
+    result: Option<CircuitResult>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", content = "data")]
 enum WsEvent {
     #[serde(rename = "qrm_update")]
@@ -156,6 +206,28 @@ enum WsEvent {
     SimulationStarted,
     #[serde(rename = "simulation_stopped")]
     SimulationStopped,
+    #[serde(rename = "qvm_circuit_update")]
+    QvmCircuitUpdate(QvmCircuitUpdate),
+    #[serde(rename = "qvm_assessment")]
+    QvmAssessment { grover_threats: Vec<GroverThreat>, shor_threats: Vec<ShorThreat>, composite_risk: u32 },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct GroverThreat {
+    target_algorithm: String,
+    classical_bits: usize,
+    required_physical_qubits: usize,
+    estimated_time_years: f64,
+    threat_level: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ShorThreat {
+    target_algorithm: String,
+    key_bits: usize,
+    required_physical_qubits: usize,
+    estimated_time_hours: f64,
+    threat_level: String,
 }
 
 // ============================================================================
@@ -226,6 +298,13 @@ struct App {
     // Blocks
     blocks: Vec<BlockInfo>,
     
+    // QVM data
+    active_circuits: Vec<QuantumCircuit>,
+    circuit_results: Vec<CircuitResult>,
+    grover_threats: Vec<GroverThreat>,
+    shor_threats: Vec<ShorThreat>,
+    qvm_composite_risk: u32,
+    
     // Logs
     logs: Vec<LogEntry>,
     
@@ -240,6 +319,7 @@ struct App {
     total_txs: u64,
     total_blocks: u64,
     rotations: u64,
+    total_circuits: u64,
 }
 
 impl App {
@@ -252,6 +332,11 @@ impl App {
             pending_txs: Vec::new(),
             recent_batches: Vec::new(),
             blocks: Vec::new(),
+            active_circuits: Vec::new(),
+            circuit_results: Vec::new(),
+            grover_threats: Vec::new(),
+            shor_threats: Vec::new(),
+            qvm_composite_risk: 0,
             logs: Vec::new(),
             active_tab: 0,
             scroll_offset: 0,
@@ -261,6 +346,7 @@ impl App {
             total_txs: 0,
             total_blocks: 0,
             rotations: 0,
+            total_circuits: 0,
         }
     }
     
@@ -371,16 +457,73 @@ impl App {
                 self.running = false;
                 self.log(LogLevel::Info, "SYS", "Simulation STOPPED".to_string());
             }
+            WsEvent::QvmCircuitUpdate(update) => {
+                self.total_circuits += 1;
+                let circuit = update.circuit;
+                
+                // Update or add circuit
+                if let Some(existing) = self.active_circuits.iter_mut().find(|c| c.id == circuit.id) {
+                    *existing = circuit.clone();
+                } else {
+                    self.active_circuits.push(circuit.clone());
+                    if self.active_circuits.len() > 10 {
+                        self.active_circuits.remove(0);
+                    }
+                }
+                
+                if let Some(result) = update.result {
+                    self.circuit_results.push(result.clone());
+                    if self.circuit_results.len() > 20 {
+                        self.circuit_results.remove(0);
+                    }
+                    self.log(
+                        LogLevel::Info,
+                        "QVM",
+                        format!(
+                            "Circuit {} completed | fidelity={:.2} | time={:.1}ms",
+                            circuit.id, result.fidelity_estimate, result.execution_time_ms
+                        ),
+                    );
+                } else {
+                    self.log(
+                        LogLevel::Debug,
+                        "QVM",
+                        format!(
+                            "Circuit {} | {} qubits | moment {}/{} | progress={:.1}%",
+                            circuit.name,
+                            circuit.qubits,
+                            circuit.current_moment,
+                            circuit.gates.iter().map(|g| g.moment).max().unwrap_or(0) + 1,
+                            circuit.execution_progress * 100.0
+                        ),
+                    );
+                }
+            }
+            WsEvent::QvmAssessment { grover_threats, shor_threats, composite_risk } => {
+                self.grover_threats = grover_threats;
+                self.shor_threats = shor_threats;
+                self.qvm_composite_risk = composite_risk;
+                self.log(
+                    LogLevel::Threat,
+                    "QVM",
+                    format!(
+                        "Oracle assessment | risk={} | {} Grover | {} Shor threats",
+                        composite_risk,
+                        self.grover_threats.len(),
+                        self.shor_threats.len()
+                    ),
+                );
+            }
         }
     }
     
     fn next_tab(&mut self) {
-        self.active_tab = (self.active_tab + 1) % 5;
+        self.active_tab = (self.active_tab + 1) % 6;
         self.scroll_offset = 0;
     }
     
     fn prev_tab(&mut self) {
-        self.active_tab = if self.active_tab == 0 { 4 } else { self.active_tab - 1 };
+        self.active_tab = if self.active_tab == 0 { 5 } else { self.active_tab - 1 };
         self.scroll_offset = 0;
     }
     
@@ -417,7 +560,7 @@ fn ui(f: &mut Frame, app: &App) {
 }
 
 fn render_header(f: &mut Frame, app: &App, area: Rect) {
-    let titles = ["QRM", "APQC", "SEQ", "CHAIN", "ALL"];
+    let titles = ["QVM", "QRM", "APQC", "SEQ", "CHAIN", "ALL"];
     let tabs = Tabs::new(titles.iter().map(|t| Line::from(*t)).collect::<Vec<_>>())
         .block(Block::default()
             .title(" QRMS CLI ")
@@ -459,6 +602,8 @@ fn render_stats(f: &mut Frame, app: &App, area: Rect) {
         Span::styled(format!("ROT: {:>2}", app.rotations), Style::default().fg(if app.rotations > 0 { Color::LightRed } else { Color::DarkGray })),
         Span::raw(" │ "),
         Span::raw(format!("HEIGHT: {:>6}", app.status.as_ref().map(|s| s.chain.height).unwrap_or(0))),
+        Span::raw(" │ "),
+        Span::styled(format!("CIRCUITS: {:>3}", app.total_circuits), Style::default().fg(Color::Magenta)),
     ]);
     
     let para = Paragraph::new(stats)
@@ -468,13 +613,230 @@ fn render_stats(f: &mut Frame, app: &App, area: Rect) {
 
 fn render_main(f: &mut Frame, app: &App, area: Rect) {
     match app.active_tab {
-        0 => render_qrm(f, app, area),
-        1 => render_apqc(f, app, area),
-        2 => render_sequencer(f, app, area),
-        3 => render_chain(f, app, area),
-        4 => render_all(f, app, area),
+        0 => render_qvm(f, app, area),
+        1 => render_qrm(f, app, area),
+        2 => render_apqc(f, app, area),
+        3 => render_sequencer(f, app, area),
+        4 => render_chain(f, app, area),
+        5 => render_all(f, app, area),
         _ => {}
     }
+}
+
+fn render_qvm(f: &mut Frame, app: &App, area: Rect) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(8),
+            Constraint::Min(10),
+            Constraint::Length(8),
+        ])
+        .split(area);
+    
+    // Top: QVM Status
+    let qvm_status = if let Some(ref status) = app.status {
+        if let Some(ref qvm) = status.qvm {
+            vec![
+                Line::from(vec![
+                    Span::styled(" Processor: ", Style::default().fg(Color::Cyan)),
+                    Span::styled(&qvm.processor, Style::default().fg(Color::Green)),
+                    Span::raw(" │ "),
+                    Span::styled(" Era: ", Style::default().fg(Color::Cyan)),
+                    Span::styled(&qvm.current_era, Style::default().fg(Color::Yellow)),
+                ]),
+                Line::from(vec![
+                    Span::styled(" QRM Risk: ", Style::default().fg(Color::Cyan)),
+                    Span::styled(format!("{:>5}", qvm.qrm_risk_score), Style::default().fg(if qvm.qrm_risk_score < 3000 { Color::Green } else if qvm.qrm_risk_score < 6000 { Color::Yellow } else { Color::Red })),
+                    Span::raw(" │ "),
+                    Span::styled(" Oracle Risk: ", Style::default().fg(Color::Cyan)),
+                    Span::styled(format!("{:>5}", qvm.oracle_risk_score), Style::default().fg(if qvm.oracle_risk_score < 3000 { Color::Green } else if qvm.oracle_risk_score < 6000 { Color::Yellow } else { Color::Red })),
+                ]),
+                Line::from(vec![
+                    Span::styled(" Assessments: ", Style::default().fg(Color::Cyan)),
+                    Span::raw(format!("{}", qvm.assessments_count)),
+                    Span::raw(" │ "),
+                    Span::styled(" Era Transitions: ", Style::default().fg(Color::Cyan)),
+                    Span::raw(format!("{}", qvm.era_transitions)),
+                    Span::raw(" │ "),
+                    Span::styled(" Threats: ", Style::default().fg(Color::Cyan)),
+                    Span::raw(format!("{}", qvm.threat_indicators_count)),
+                ]),
+                Line::from(vec![
+                    Span::styled(" Recommended: ", Style::default().fg(Color::Cyan)),
+                    Span::raw(qvm.recommended_algorithms.join(", ")),
+                ]),
+            ]
+        } else {
+            vec![Line::from("QVM status not available")]
+        }
+    } else {
+        vec![Line::from("Awaiting connection...")]
+    };
+    
+    let status_para = Paragraph::new(qvm_status)
+        .block(Block::default()
+            .title(" QVM Oracle Status ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Magenta)));
+    f.render_widget(status_para, chunks[0]);
+    
+    // Middle: Circuit Visualization
+    if let Some(circuit) = app.active_circuits.last() {
+        render_circuit(f, circuit, chunks[1]);
+    } else {
+        let empty = Paragraph::new("No active circuits")
+            .block(Block::default()
+                .title(" Quantum Circuit ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Magenta)));
+        f.render_widget(empty, chunks[1]);
+    }
+    
+    // Bottom: Threat Assessments
+    let chunks_bottom = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(chunks[2]);
+    
+    // Grover threats
+    let grover_items: Vec<ListItem> = app.grover_threats.iter().take(6).map(|t| {
+        let threat_color = match t.threat_level.as_str() {
+            "imminent" => Color::Red,
+            "near_term" => Color::LightRed,
+            "medium_term" => Color::Yellow,
+            _ => Color::Green,
+        };
+        ListItem::new(vec![
+            Line::from(vec![
+                Span::styled(&t.target_algorithm, Style::default().fg(Color::Cyan)),
+                Span::raw(format!(" ({} bits)", t.classical_bits)),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled(format!("{} qubits", t.required_physical_qubits), Style::default().fg(Color::Yellow)),
+                Span::raw(" │ "),
+                Span::styled(format!("{:.1} years", t.estimated_time_years), Style::default().fg(Color::DarkGray)),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled(format!("Level: {}", t.threat_level), Style::default().fg(threat_color)),
+            ]),
+        ])
+    }).collect();
+    
+    let grover_list = List::new(grover_items)
+        .block(Block::default()
+            .title(" Grover Threats (Symmetric) ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Blue)));
+    f.render_widget(grover_list, chunks_bottom[0]);
+    
+    // Shor threats
+    let shor_items: Vec<ListItem> = app.shor_threats.iter().take(6).map(|t| {
+        let threat_color = match t.threat_level.as_str() {
+            "imminent" => Color::Red,
+            "near_term" => Color::LightRed,
+            "medium_term" => Color::Yellow,
+            _ => Color::Green,
+        };
+        ListItem::new(vec![
+            Line::from(vec![
+                Span::styled(&t.target_algorithm, Style::default().fg(Color::Cyan)),
+                Span::raw(format!(" ({} bits)", t.key_bits)),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled(format!("{} qubits", t.required_physical_qubits), Style::default().fg(Color::Yellow)),
+                Span::raw(" │ "),
+                Span::styled(format!("{:.1} hours", t.estimated_time_hours), Style::default().fg(Color::DarkGray)),
+            ]),
+            Line::from(vec![
+                Span::raw("  "),
+                Span::styled(format!("Level: {}", t.threat_level), Style::default().fg(threat_color)),
+            ]),
+        ])
+    }).collect();
+    
+    let shor_list = List::new(shor_items)
+        .block(Block::default()
+            .title(" Shor Threats (Asymmetric) ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Red)));
+    f.render_widget(shor_list, chunks_bottom[1]);
+}
+
+fn render_circuit(f: &mut Frame, circuit: &QuantumCircuit, area: Rect) {
+    let max_qubits_display = (area.height.saturating_sub(4)) as usize;
+    let qubits_to_show = circuit.qubits.min(max_qubits_display);
+    
+    let mut lines = Vec::new();
+    lines.push(Line::from(vec![
+        Span::styled(&circuit.name, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        Span::raw(format!(" | {} qubits | ID: {}", circuit.qubits, circuit.id)),
+    ]));
+    lines.push(Line::from(""));
+    
+    // Group gates by moment
+    let max_moment = circuit.gates.iter().map(|g| g.moment).max().unwrap_or(0);
+    let current_moment = circuit.current_moment.min(max_moment);
+    
+    // Render qubit lines with gates
+    for q in 0..qubits_to_show {
+        let mut qubit_line = String::new();
+        qubit_line.push_str(&format!("q{:>2} ", q));
+        
+        // Draw timeline
+        for moment in 0..=max_moment.min(50) {
+            let gates_in_moment: Vec<_> = circuit.gates.iter()
+                .filter(|g| g.moment == moment && g.qubits.contains(&q))
+                .collect();
+            
+            if moment == current_moment {
+                qubit_line.push_str("│");
+            } else if moment < current_moment {
+                qubit_line.push_str("─");
+            } else {
+                qubit_line.push_str("·");
+            }
+            
+            if let Some(gate) = gates_in_moment.first() {
+                let gate_symbol = match gate.gate_type.as_str() {
+                    "H" => "H",
+                    "X" => "X",
+                    "Y" => "Y",
+                    "Z" => "Z",
+                    "CNOT" | "CX" => {
+                        if gate.qubits[0] == q { "●" } else { "⊕" }
+                    },
+                    "CZ" => {
+                        if gate.qubits[0] == q { "●" } else { "○" }
+                    },
+                    "Measure" => "M",
+                    _ => "?",
+                };
+                qubit_line.push_str(gate_symbol);
+            } else {
+                qubit_line.push_str(" ");
+            }
+        }
+        
+        lines.push(Line::from(qubit_line));
+    }
+    
+    lines.push(Line::from(""));
+    lines.push(Line::from(vec![
+        Span::raw(format!("Progress: {:.1}% | Moment: {}/{}", 
+            circuit.execution_progress * 100.0,
+            current_moment + 1,
+            max_moment + 1)),
+    ]));
+    
+    let circuit_para = Paragraph::new(lines)
+        .block(Block::default()
+            .title(" Active Circuit ")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Magenta)));
+    f.render_widget(circuit_para, area);
 }
 
 fn render_qrm(f: &mut Frame, app: &App, area: Rect) {
@@ -555,7 +917,7 @@ fn render_apqc(f: &mut Frame, app: &App, area: Rect) {
         .split(area);
     
     // Top: Algorithm status
-    let algo_text = if let Some(ref status) = app.status {
+    let algo_text = if app.status.is_some() {
         vec![
             Line::from(vec![
                 Span::styled(" SIGNATURES: ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
@@ -721,7 +1083,13 @@ fn render_chain(f: &mut Frame, app: &App, area: Rect) {
 fn render_all(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(25), Constraint::Percentage(25), Constraint::Percentage(25), Constraint::Percentage(25)])
+        .constraints([
+            Constraint::Percentage(20),
+            Constraint::Percentage(20),
+            Constraint::Percentage(20),
+            Constraint::Percentage(20),
+            Constraint::Percentage(20),
+        ])
         .split(area);
     
     // QRM mini
@@ -772,6 +1140,26 @@ fn render_all(f: &mut Frame, app: &App, area: Rect) {
     let chain_list = List::new(chain_items)
         .block(Block::default().title(" CHAIN ").borders(Borders::ALL).border_style(Style::default().fg(Color::Green)));
     f.render_widget(chain_list, chunks[3]);
+    
+    // QVM mini
+    let qvm_text = if let Some(ref s) = app.status {
+        if let Some(ref qvm) = s.qvm {
+            vec![
+                Line::from(vec![Span::styled(&qvm.processor, Style::default().fg(Color::Green))]),
+                Line::from(vec![Span::styled(&qvm.current_era, Style::default().fg(Color::Yellow))]),
+                Line::from(format!("Risk: {}", qvm.oracle_risk_score)),
+                Line::from(format!("Circuits: {}", app.total_circuits)),
+                Line::from(format!("Assess: {}", qvm.assessments_count)),
+            ]
+        } else {
+            vec![Line::from("...")]
+        }
+    } else {
+        vec![Line::from("...")]
+    };
+    let qvm_para = Paragraph::new(qvm_text)
+        .block(Block::default().title(" QVM ").borders(Borders::ALL).border_style(Style::default().fg(Color::Magenta)));
+    f.render_widget(qvm_para, chunks[4]);
 }
 
 fn render_logs(f: &mut Frame, app: &App, area: Rect) {
@@ -928,6 +1316,7 @@ async fn main() -> io::Result<()> {
                     KeyCode::Char('3') => app.active_tab = 2,
                     KeyCode::Char('4') => app.active_tab = 3,
                     KeyCode::Char('5') => app.active_tab = 4,
+                    KeyCode::Char('6') => app.active_tab = 5,
                     _ => {}
                 }
             }

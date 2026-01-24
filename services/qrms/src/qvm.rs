@@ -24,11 +24,15 @@
 //! │  └─────────────────────────────┼────────────────────────────┘  │
 //! │                                ▼                               │
 //! │  ┌───────────────────────────────────────────────────────────┐ │
-//! │  │              PHALA TEE SEQUENCER LAYER                    │ │
+//! │  │              AEGIS-TEE SEQUENCER LAYER                   │ │
 //! │  │  ┌─────────────────┐ ┌─────────────────┐ ┌─────────────┐  │ │
 //! │  │  │ Encrypted       │ │ Asset           │ │ Migration   │  │ │
 //! │  │  │ Mempool         │ │ Protection      │ │ System      │  │ │
 //! │  │  └─────────────────┘ └─────────────────┘ └─────────────┘  │ │
+//! │  │                              │                              │ │
+//! │  │  ┌───────────────────────────▼──────────────────────────┐  │ │
+//! │  │  │      Phala Network Redundancy (Optional)            │  │ │
+//! │  │  └──────────────────────────────────────────────────────┘  │ │
 //! │  └───────────────────────────────────────────────────────────┘ │
 //! └─────────────────────────────────────────────────────────────────┘
 //! ```
@@ -38,7 +42,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 
 use crate::qrm::{QuantumResistanceMonitor, ThreatCategory, QuantumEra, RiskAssessment, ThreatIndicator};
-use crate::phala_tee::PhalaTeeSequencer;
+use crate::aegis_tee::AegisTeeSequencer;
 use crate::apqc::AdaptivePqcLayer;
 
 // ============================================================================
@@ -1770,8 +1774,8 @@ impl QvmProtocolStack {
         }
     }
 
-    /// Create a bridge to the Phala TEE Sequencer
-    pub fn bridge_to_tee(&self, tee: &mut PhalaTeeSequencer) {
+    /// Create a bridge to the Aegis-TEE Sequencer
+    pub fn bridge_to_tee(&self, tee: &mut AegisTeeSequencer) {
         // Transfer threat indicators to TEE sequencer
         for indicator in &self.threat_indicators {
             tee.update_threat(indicator.clone());

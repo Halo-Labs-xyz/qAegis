@@ -26,12 +26,13 @@ flowchart TB
         QRM --> TI
     end
     
-    subgraph TEE["Phala TEE Layer"]
+    subgraph TEE["Aegis-TEE Layer"]
         direction TB
         EM[Encrypted Mempool]
         AP[Asset Protection]
         MS[Migration System]
         IO[Intelligence Ordering]
+        PR[Phala Redundancy]
     end
     
     subgraph Chain["Blockchain Layer"]
@@ -71,9 +72,9 @@ Contains the Quantum Resistance Monitor and Adaptive PQC Layer.
 | APQC | Hybrid ML-DSA + SLH-DSA + ECDSA |
 | Threat Indicators | Real-time risk assessment |
 
-### Layer 3: Phala TEE
+### Layer 3: Aegis-TEE
 
-Trusted execution environment for secure transaction processing.
+Trusted execution environment for secure transaction processing (with optional Phala redundancy).
 
 | Component | Purpose |
 |-----------|---------|
@@ -81,6 +82,7 @@ Trusted execution environment for secure transaction processing.
 | Asset Protection | On/off-chain asset security |
 | Migration System | State preservation during upgrades |
 | Intelligence Ordering | Risk-aware transaction ordering |
+| Phala Redundancy | Optional fallback attestation |
 
 ### Layer 4: Blockchain
 
@@ -384,9 +386,9 @@ if let Some(result) = stack.run_quantum_circuit(&circuit) {
 ### Bridge to TEE
 
 ```rust
-use qrms::phala_tee::PhalaTeeSequencer;
+use qrms::aegis_tee::AegisTeeSequencer;
 
-let mut tee = PhalaTeeSequencer::default();
+let mut tee = AegisTeeSequencer::default();
 
 // Transfer threat indicators to TEE
 stack.bridge_to_tee(&mut tee);
@@ -415,7 +417,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant QVM as QVM Protocol Stack
-    participant TEE as Phala TEE Sequencer
+    participant TEE as Aegis-TEE Sequencer
     participant Batch as Quantum Batch
     
     QVM->>TEE: Bridge threat indicators

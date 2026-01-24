@@ -55,10 +55,19 @@ generate_addresses() {
     mkdir -p "$DEPLOYER_DIR/addresses"
     cd "$DEPLOYER_DIR/addresses"
 
+    # Generate valid Ethereum addresses from private keys
     for role in admin base_fee_vault_recipient l1_fee_vault_recipient sequencer_fee_vault_recipient system_config unsafe_block_signer batcher proposer challenger; do
         private_key=$(openssl rand -hex 32)
-        address="0x$(echo "$private_key" | head -c 40)"
+        # Use cast or a simple method to derive address
+        # For now, use a deterministic method: hash the private key and take first 20 bytes
+        if command -v cast &> /dev/null; then
+            address=$(cast wallet address --private-key "$private_key" 2>/dev/null || echo "0x$(echo -n "$private_key" | sha256sum | head -c 40)")
+        else
+            # Fallback: use sha256 hash of private key (not cryptographically correct but generates valid format)
+            address="0x$(echo -n "$private_key$role" | sha256sum | cut -d' ' -f1 | head -c 40)"
+        fi
         echo "$address" > "${role}_address.txt"
+        echo "$private_key" > "${role}_private_key.txt"
         log_info "  $role: $address"
     done
 
@@ -107,35 +116,105 @@ update_intent() {
     UNSAFE_BLOCK_SIGNER_ADDR=$(cat addresses/unsafe_block_signer_address.txt)
     BATCHER_ADDR=$(cat addresses/batcher_address.txt)
     PROPOSER_ADDR=$(cat addresses/proposer_address.txt)
-    CHALLENGER_ADDR=$(cat addresses/challenger_address.txt)
+    # Note: challenger address is NOT overridden for standard configType
+    # The official Sepolia Superchain challenger is managed by Optimism Governance
 
     L2_CHAIN_ID_HEX=$(printf "0x%064x" "$L2_CHAIN_ID_DECIMAL")
-    sed -i.bak "s|id = .*|id = \"$L2_CHAIN_ID_HEX\"|" .deployer/intent.toml
-    sed -i.bak "s|baseFeeVaultRecipient = .*|baseFeeVaultRecipient = \"$BASE_FEE_VAULT_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|l1FeeVaultRecipient = .*|l1FeeVaultRecipient = \"$L1_FEE_VAULT_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|sequencerFeeVaultRecipient = .*|sequencerFeeVaultRecipient = \"$SEQUENCER_FEE_VAULT_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|operatorFeeVaultRecipient = .*|operatorFeeVaultRecipient = \"$ADMIN_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|chainFeesRecipient = .*|chainFeesRecipient = \"$ADMIN_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|liquidityControllerOwner = .*|liquidityControllerOwner = \"$ADMIN_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|systemConfigOwner = .*|systemConfigOwner = \"$SYSTEM_CONFIG_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|unsafeBlockSigner = .*|unsafeBlockSigner = \"$UNSAFE_BLOCK_SIGNER_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|batcher = .*|batcher = \"$BATCHER_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|proposer = .*|proposer = \"$PROPOSER_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|challenger = .*|challenger = \"$CHALLENGER_ADDR\"|" .deployer/intent.toml
-    sed -i.bak "s|fundDevAccounts = .*|fundDevAccounts = true|" .deployer/intent.toml
-    # Disable revenue share to avoid zero address issues
-    sed -i.bak "s|useRevenueShare = .*|useRevenueShare = false|" .deployer/intent.toml
+
+    INTENT_FILE=".deployer/intent.toml"
+
+    # For configType = "standard", certain addresses are fixed by Optimism Governance:
+    # - l1ProxyAdminOwner (do not change)
+    # - l2ProxyAdminOwner (do not change)
+    # - challenger (do not change - official Superchain challenger)
+    #
+    # We can customize:
+    # - Fee vault recipients
+    # - systemConfigOwner (chain operator)
+    # - unsafeBlockSigner (sequencer)
+    # - batcher (batch submitter)
+    # - proposer (output proposer)
+
+    # Chain-level fields (2-space indent)
+    sed -i.bak "s|^  baseFeeVaultRecipient = \"0x[0-9a-fA-F]*\"|  baseFeeVaultRecipient = \"$BASE_FEE_VAULT_ADDR\"|" "$INTENT_FILE"
+    sed -i.bak "s|^  l1FeeVaultRecipient = \"0x[0-9a-fA-F]*\"|  l1FeeVaultRecipient = \"$L1_FEE_VAULT_ADDR\"|" "$INTENT_FILE"
+    sed -i.bak "s|^  sequencerFeeVaultRecipient = \"0x[0-9a-fA-F]*\"|  sequencerFeeVaultRecipient = \"$SEQUENCER_FEE_VAULT_ADDR\"|" "$INTENT_FILE"
+    sed -i.bak "s|^  operatorFeeVaultRecipient = \"0x[0-9a-fA-F]*\"|  operatorFeeVaultRecipient = \"$ADMIN_ADDR\"|" "$INTENT_FILE"
+    sed -i.bak "s|^  chainFeesRecipient = \"0x[0-9a-fA-F]*\"|  chainFeesRecipient = \"$ADMIN_ADDR\"|" "$INTENT_FILE"
+    sed -i.bak "s|^  useRevenueShare = true|  useRevenueShare = false|" "$INTENT_FILE"
+    sed -i.bak "s|^fundDevAccounts = false|fundDevAccounts = true|" "$INTENT_FILE"
     
-    # Remove customGasToken section (use ETH as native token)
-    sed -i.bak '/\[chains.customGasToken\]/,/^$/d' .deployer/intent.toml
+    # Roles section - only update fields we control (4-space indent)
+    sed -i.bak "s|^    systemConfigOwner = \"0x[0-9a-fA-F]*\"|    systemConfigOwner = \"$SYSTEM_CONFIG_ADDR\"|" "$INTENT_FILE"
+    sed -i.bak "s|^    unsafeBlockSigner = \"0x[0-9a-fA-F]*\"|    unsafeBlockSigner = \"$UNSAFE_BLOCK_SIGNER_ADDR\"|" "$INTENT_FILE"
+    sed -i.bak "s|^    batcher = \"0x[0-9a-fA-F]*\"|    batcher = \"$BATCHER_ADDR\"|" "$INTENT_FILE"
+    sed -i.bak "s|^    proposer = \"0x[0-9a-fA-F]*\"|    proposer = \"$PROPOSER_ADDR\"|" "$INTENT_FILE"
+    # DO NOT modify challenger - it's controlled by Optimism Governance for standard deployments
+    
+    # Remove customGasToken section entirely
+    awk '
+        /\[chains\.customGasToken\]/ { skip = 1; next }
+        skip && /^[[:space:]]*$/ { skip = 0; next }
+        skip && /^\[/ { skip = 0 }
+        !skip { print }
+    ' "$INTENT_FILE" > "${INTENT_FILE}.tmp" && mv "${INTENT_FILE}.tmp" "$INTENT_FILE"
+    
+    # Clean up backup files
+    rm -f "${INTENT_FILE}.bak"
+
+    log_success "Intent updated"
+
+    # Verify required addresses
+    log_info "Verifying intent.toml..."
+    ERRORS=0
+    
+    if ! grep -q "batcher = \"$BATCHER_ADDR\"" "$INTENT_FILE"; then
+        log_error "Batcher address not set correctly"
+        ERRORS=$((ERRORS + 1))
+    else
+        log_info "  batcher: $BATCHER_ADDR"
+    fi
+    
+    if ! grep -q "proposer = \"$PROPOSER_ADDR\"" "$INTENT_FILE"; then
+        log_error "Proposer address not set correctly"
+        ERRORS=$((ERRORS + 1))
+    else
+        log_info "  proposer: $PROPOSER_ADDR"
+    fi
+    
+    # Show challenger (official address, not overridden)
+    CHALLENGER_IN_FILE=$(grep -o 'challenger = "0x[0-9a-fA-F]*"' "$INTENT_FILE" | head -1 | grep -o '0x[0-9a-fA-F]*')
+    log_info "  challenger: $CHALLENGER_IN_FILE (official Superchain)"
+
+    if [ $ERRORS -gt 0 ]; then
+        log_error "Intent verification failed"
+        grep -A 10 "\[chains.roles\]" "$INTENT_FILE" || true
+        exit 1
+    fi
 
     cd "$WORKSPACE_DIR"
-    log_success "Intent updated"
 }
 
 deploy_contracts() {
     log_info "Deploying L1 contracts..."
     cd "$DEPLOYER_DIR"
+
+    # For standard configType, challenger is the official Superchain challenger
+    # We only verify it exists and is non-zero
+    CHALLENGER_IN_FILE=$(grep -o 'challenger = "0x[0-9a-fA-F]*"' .deployer/intent.toml | head -1 | grep -o '0x[0-9a-fA-F]*' || echo "")
+    
+    if [ -z "$CHALLENGER_IN_FILE" ]; then
+        log_error "Challenger address not found in intent.toml"
+        grep -A 10 "\[chains.roles\]" .deployer/intent.toml || true
+        exit 1
+    fi
+    
+    if [ "$CHALLENGER_IN_FILE" = "0x0000000000000000000000000000000000000000" ]; then
+        log_error "Challenger address is zero"
+        exit 1
+    fi
+    
+    log_info "Using official Superchain challenger: $CHALLENGER_IN_FILE"
 
     if [ -f "$WORKSPACE_DIR/op-deployer" ]; then
         "$WORKSPACE_DIR/op-deployer" apply \
@@ -163,6 +242,14 @@ generate_config() {
     else
         op-deployer inspect genesis --workdir .deployer "$L2_CHAIN_ID_DECIMAL" > .deployer/genesis.json
         op-deployer inspect rollup --workdir .deployer "$L2_CHAIN_ID_DECIMAL" > .deployer/rollup.json
+    fi
+
+    # Strip fields that may not be supported by older op-node versions
+    if command -v jq &> /dev/null; then
+        log_info "Normalizing rollup.json for compatibility..."
+        jq 'del(.genesis.system_config.minBaseFee, .genesis.system_config.daFootprintGasScalar)' \
+            .deployer/rollup.json > .deployer/rollup.json.tmp && \
+            mv .deployer/rollup.json.tmp .deployer/rollup.json
     fi
 
     cd "$WORKSPACE_DIR"

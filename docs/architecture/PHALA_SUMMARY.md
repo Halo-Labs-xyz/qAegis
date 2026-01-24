@@ -1,12 +1,32 @@
-# Phala Network TEE Integration Summary
+# Phala Network TEE Integration Summary (Redundancy Layer)
 
 ## Implementation Status: Complete
 
-QuantumAegis sequencer is fully implemented for Phala Network TEE Cloud deployment with quantum-resistant sequencing, asset protection, and state migration.
+**Note**: Phala Network is now used as a **redundancy/fallback layer** for Aegis-TEE. The primary TEE implementation is Aegis-TEE (see [Aegis-TEE Architecture](./aegis_tee.md)).
+
+QuantumAegis sequencer uses Aegis-TEE as the primary TEE infrastructure, with Phala Network TEE Cloud available as an optional redundancy mechanism for enhanced reliability and distributed security verification.
 
 ## Core Components
 
-### 1. PhalaTeeSequencer (`services/qrms/src/phala_tee.rs`)
+### 1. AegisTeeSequencer (`services/qrms/src/aegis_tee.rs`) - Primary
+
+**Features:**
+- Encrypted mempool (decrypted only inside TEE)
+- Intelligence-based transaction ordering
+- Asset protection registry
+- State migration with checkpointing
+- Quantum-resistant batch signing
+- Optional Phala Network redundancy
+
+### 2. Phala Network Redundancy (Optional)
+
+When enabled, provides:
+- Backup attestation for each batch
+- Cross-validation with Aegis-TEE
+- Fallback verification
+- Distributed security across multiple TEE platforms
+
+### 3. Legacy: PhalaTeeSequencer (`services/qrms/src/phala_tee.rs`) - Deprecated
 
 **Features:**
 - Encrypted mempool (decrypted only inside TEE)
@@ -21,7 +41,7 @@ QuantumAegis sequencer is fully implemented for Phala Network TEE Cloud deployme
 - Migration-aware: Migration transactions grouped
 - Hybrid: Combines all strategies
 
-### 2. Asset Protection System
+### 4. Asset Protection System
 
 **Supported Asset Types:**
 - On-chain: Tokens, NFTs, smart contract data
@@ -34,7 +54,7 @@ QuantumAegis sequencer is fully implemented for Phala Network TEE Cloud deployme
 - Risk threshold activation
 - Migration state preservation
 
-### 3. State Migration
+### 5. State Migration
 
 **Checkpoint System:**
 - Asset state snapshots
@@ -42,12 +62,13 @@ QuantumAegis sequencer is fully implemented for Phala Network TEE Cloud deployme
 - Block-based checkpointing
 - Rollback support
 
-### 4. Quantum-Resistant Batching
+### 6. Quantum-Resistant Batching
 
 **Batch Structure:**
 - ML-DSA-87 signature (primary)
 - SLH-DSA-256s signature (secondary)
-- Phala TEE attestation
+- Aegis-TEE attestation (primary)
+- Phala Network attestation (optional redundancy)
 - Risk assessment integration
 - Asset protection metadata
 

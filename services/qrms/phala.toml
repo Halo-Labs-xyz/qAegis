@@ -1,5 +1,9 @@
-# Phala Network TEE Cloud Configuration
+# Phala Network TEE Cloud Configuration (Redundancy Layer)
 # QuantumAegis Sequencer Deployment
+# 
+# Note: This configuration is for Phala Network redundancy/fallback.
+# The primary TEE implementation is Aegis-TEE. Phala Network provides
+# optional redundancy attestation and distributed verification.
 
 [phala]
 # Phala Network endpoint

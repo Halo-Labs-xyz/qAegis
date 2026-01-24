@@ -1,14 +1,16 @@
-# Phala Network TEE Deployment Guide
+# Phala Network TEE Deployment Guide (Redundancy Layer)
 
 ## Overview
 
-QuantumAegis sequencer deployed on Phala Network's TEE Cloud provides:
+**Note**: This guide describes deploying Phala Network as a **redundancy/fallback layer** for Aegis-TEE. The primary TEE implementation is Aegis-TEE (see [Aegis-TEE Architecture](../architecture/aegis_tee.md)).
 
+When configured as redundancy, Phala Network TEE Cloud provides:
+
+- **Redundancy attestation**: Backup verification for each batch
+- **Distributed security**: Cross-validation with Aegis-TEE
+- **Fallback support**: Backup in case of Aegis-TEE issues
 - **Hardware-backed security**: Intel TDX or AMD SEV enclaves
 - **Quantum-resistant sequencing**: ML-DSA-87 + SLH-DSA-256s dual signatures
-- **Asset protection**: On-chain and off-chain data protection
-- **Intelligence-based ordering**: Risk-aware transaction sequencing
-- **State migration**: Seamless upgrades with checkpointing
 
 ## Architecture
 
@@ -191,12 +193,17 @@ enable_migration = true
 ### Example: Register Token Protection
 
 ```rust
-use qrms::phala_tee::{PhalaTeeSequencer, AssetProtection, AssetType, AccessPolicy};
+use qrms::aegis_tee::{AegisTeeSequencer, AssetProtection, AssetType, AccessPolicy};
 
-let mut sequencer = PhalaTeeSequencer::new(
-    "worker_0".to_string(),
-    "enclave_0".to_string(),
+// Recommended: Use Aegis-TEE with Phala redundancy
+let mut sequencer = AegisTeeSequencer::new(
+    "aegis_worker_0".to_string(),
+    "aegis_enclave_0".to_string(),
     "TDX".to_string(),
+    Some((
+        "phala_worker_0".to_string(),  // Phala redundancy
+        "phala_enclave_0".to_string(),
+    )),
 );
 
 let asset = AssetProtection {

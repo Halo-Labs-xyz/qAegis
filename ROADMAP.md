@@ -17,8 +17,8 @@
 │  └─────────────────────────────────────────────────────────┘    │
 │                              ▼                                  │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │           PHALA TEE LAYER (Phase 3)                     │    │
-│  │  Encrypted Mempool • Asset Protection • Migration       │    │
+│  │           AEGIS-TEE LAYER (Phase 3)                     │    │
+│  │  Encrypted Mempool • Asset Protection • Phala Redundancy│    │
 │  └─────────────────────────────────────────────────────────┘    │
 │                              ▼                                  │
 │  ┌─────────────────────────────────────────────────────────┐    │
@@ -67,27 +67,27 @@
    - Fallback to portable implementations
 ```
 
-## Phase 3: TEE Integration (Phala Network)
+## Phase 3: TEE Integration (Aegis-TEE + Phala Redundancy)
 
 | Task | Priority | Status | Location |
 |------|----------|--------|----------|
-| Phala TEE Sequencer | High | Done | `phala_tee.rs` - Full implementation |
-| Phala Attestation | High | Done | `phala_tee.rs:47-57` |
-| Encrypted Mempool | High | Done | `phala_tee.rs:108-113` |
-| Intelligence Ordering | High | Done | `phala_tee.rs:135-245` |
-| Asset Protection | High | Done | `phala_tee.rs:59-88` |
-| State Migration | High | Done | `phala_tee.rs:320-380` |
-| Quantum-Resistant Batching | High | Done | `phala_tee.rs:247-318` |
-| Phala Deployment Config | Medium | Done | `phala.toml`, `phala_deploy.rs` |
-| Legacy SGX Sequencer | Low | Simulated | `sequencer.rs` - For reference |
+| Aegis-TEE Sequencer | High | Done | `aegis_tee.rs` - Primary implementation |
+| Aegis-TEE Attestation | High | Done | `aegis_tee.rs` - TDX/SEV/SGX |
+| Phala Redundancy Layer | High | Done | `aegis_tee.rs` - Optional fallback |
+| Encrypted Mempool | High | Done | `aegis_tee.rs` |
+| Intelligence Ordering | High | Done | `aegis_tee.rs` |
+| Asset Protection | High | Done | `aegis_tee.rs` |
+| State Migration | High | Done | `aegis_tee.rs` |
+| Quantum-Resistant Batching | High | Done | `aegis_tee.rs` |
+| Legacy Phala Sequencer | Low | Deprecated | `phala_tee.rs` - Backward compat |
 
-### Phase 3 Phala Integration (Complete)
+### Phase 3 TEE Integration (Complete)
 
 ```
-✅ Phala TEE Sequencer Implementation
-   - Full Phala Network integration
-   - TDX/SEV enclave support
-   - Hardware attestation via Phala quotes
+✅ Aegis-TEE Sequencer Implementation (Primary)
+   - TDX/SEV/SGX enclave support
+   - Hardware attestation
+   - Phala Network redundancy (optional)
 
 ✅ Intelligence-Based Ordering
    - Risk-aware ordering
@@ -288,20 +288,22 @@ graph TB
     end
     
     subgraph Phase3["Phase 3: TEE"]
-        PHALA[Phala TEE<br/>Done]
+        AEGIS[Aegis-TEE<br/>Done]
         ATTEST[Attestation<br/>Done]
         MEMPOOL[Encrypted Mempool<br/>Done]
         ASSET[Asset Protection<br/>Done]
+        PHALA_RED[Phala Redundancy<br/>Optional]
         
-        PHALA --> ATTEST
-        MEMPOOL --> PHALA
-        ASSET --> PHALA
+        AEGIS --> ATTEST
+        MEMPOOL --> AEGIS
+        ASSET --> AEGIS
+        AEGIS -.-> PHALA_RED
     end
     
     GROVER --> THREAT
     SHOR --> THREAT
     THREAT --> |Risk Score| HYBRID
-    HYBRID --> PHALA
+    HYBRID --> AEGIS
 ```
 
 ## Current Algorithm Configuration

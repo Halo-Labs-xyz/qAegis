@@ -1,4 +1,6 @@
-# Phala TEE Sequencer Quick Start
+# Phala Network Redundancy Quick Start
+
+**Note**: This guide shows how to use Phala Network as a redundancy layer for Aegis-TEE. For the primary TEE implementation, see [README_AEGIS_TEE.md](./README_AEGIS_TEE.md).
 
 ## 5-Minute Setup
 
@@ -46,14 +48,18 @@ chmod +x deploy.sh
 ## Basic Usage
 
 ```rust
-use qrms::phala_tee::PhalaTeeSequencer;
+use qrms::aegis_tee::AegisTeeSequencer;
 use qrms::apqc::AdaptivePqcLayer;
 
-// Initialize
-let mut sequencer = PhalaTeeSequencer::new(
-    "worker_001".to_string(),
-    "enclave_001".to_string(),
+// Initialize Aegis-TEE with Phala redundancy
+let mut sequencer = AegisTeeSequencer::new(
+    "aegis_worker_001".to_string(),
+    "aegis_enclave_001".to_string(),
     "TDX".to_string(),
+    Some((
+        "phala_worker_001".to_string(),  // Phala redundancy
+        "phala_enclave_001".to_string(),
+    )),
 );
 
 let mut apqc = AdaptivePqcLayer::new();
@@ -74,10 +80,11 @@ let batch = sequencer.create_quantum_batch(&mut apqc, tee_key).await;
 ✅ **Asset Protection**: On-chain and off-chain data protection  
 ✅ **Intelligence Ordering**: Risk-aware transaction sequencing  
 ✅ **State Migration**: Seamless upgrades with checkpointing  
-✅ **TEE Security**: Hardware-backed Phala Network enclaves  
+✅ **TEE Security**: Hardware-backed Aegis-TEE with Phala Network redundancy  
 
 ## Documentation
 
-- Full Guide: [Phala Deployment](../../docs/deployment/PHALA_TEE.md)
-- Architecture: [Phala Integration](../../docs/architecture/phala_integration.md)
-- Example: [phala_sequencer_example.rs](./examples/phala_sequencer_example.rs)
+- **[Aegis-TEE (Primary)](./README_AEGIS_TEE.md)** - Recommended for new implementations
+- [Phala Integration (Redundancy)](../../docs/architecture/phala_integration.md)
+- [Phala Deployment](../../docs/deployment/PHALA_TEE.md)
+- [Aegis-TEE Architecture](../../docs/architecture/aegis_tee.md)
