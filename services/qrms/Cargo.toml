@@ -24,7 +24,7 @@ rand = "0.8"
 
 # Post-Quantum Cryptography
 pqcrypto-dilithium = "0.5"
-pqcrypto-sphincsplus = "0.5"
+pqcrypto-sphincsplus = "0.7"
 pqcrypto-traits = "0.3"
 # Temporarily disabled due to AVX2 compilation issues
 # pqcrypto-kyber = "0.5"
