@@ -51,7 +51,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.6", features = ["v4", "serde"] }
 
 # TUI (for CLI)
-ratatui = "0.28"
+ratatui = "0.30"
 crossterm = "0.28"
 
 # WebSocket client (for CLI)
