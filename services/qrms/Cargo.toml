@@ -61,7 +61,7 @@ tokio-tungstenite = "0.24"
 reqwest = { version = "0.12", features = ["json"] }
 
 # Configuration parsing (optional, for phala_deploy)
-toml = { version = "0.8", optional = true }
+toml = { version = "0.9", optional = true }
 
 [features]
 default = []
