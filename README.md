@@ -96,7 +96,7 @@ make up        # Start L2 chain
 
 ```bash
 cd ../../contracts
-ADMIN_PRIVATE_KEY="0xdc391a1067801d2526c5ac1f42cf3a9dd495f607a4cbc920301c2b5a9215890d" QRM_UPDATER_ADDRESS="0x7Afde307a7F56d0254E42136cAa9896778662302" forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
+ADMIN_PRIVATE_KEY="" QRM_UPDATER_ADDRESS="" forge script script/Deploy.s.sol --rpc-url http://localhost:8545 --broadcast
 ```
 
 ### 3. Start QRMS Services
