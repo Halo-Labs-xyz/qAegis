@@ -1,0 +1,20 @@
+{"goal":"Diagnose failing parser benchmark and identify root cause","max_depth":3,"dag_nodes":18,"target_task_type":"THINK","target_tool":"web_search"}
+{"goal":"Write regression test for parser edge case with nested delimiters","max_depth":2,"dag_nodes":10,"target_task_type":"WRITE","target_tool":"file"}
+{"goal":"Implement parser fix for escaped token handling","max_depth":2,"dag_nodes":12,"target_task_type":"CODE_INTERPRET","target_tool":"terminal"}
+{"goal":"Search repository history for parser refactor introducing regression","max_depth":1,"dag_nodes":5,"target_task_type":"RETRIEVE","target_tool":"web_search"}
+{"goal":"Collect benchmark failure logs and summarize common stack traces","max_depth":2,"dag_nodes":9,"target_task_type":"RETRIEVE","target_tool":"terminal"}
+{"goal":"Draft patch notes for parser bugfix release","max_depth":1,"dag_nodes":4,"target_task_type":"WRITE","target_tool":"file"}
+{"goal":"Investigate memory leak in benchmark harness process orchestration","max_depth":3,"dag_nodes":20,"target_task_type":"THINK","target_tool":"terminal"}
+{"goal":"Locate all call sites using deprecated parser API","max_depth":1,"dag_nodes":7,"target_task_type":"RETRIEVE","target_tool":"web_search"}
+{"goal":"Refactor parser state machine transition logic for determinism","max_depth":3,"dag_nodes":14,"target_task_type":"CODE_INTERPRET","target_tool":"terminal"}
+{"goal":"Create migration guide for parser API consumers","max_depth":1,"dag_nodes":3,"target_task_type":"WRITE","target_tool":"file"}
+{"goal":"Analyze flaky benchmark timing variance across recent runs","max_depth":3,"dag_nodes":16,"target_task_type":"THINK","target_tool":"calculator"}
+{"goal":"Generate minimal reproducer for tokenizer panic","max_depth":2,"dag_nodes":11,"target_task_type":"CODE_INTERPRET","target_tool":"terminal"}
+{"goal":"Search external docs for grammar ambiguity best practices","max_depth":1,"dag_nodes":6,"target_task_type":"RETRIEVE","target_tool":"web_search"}
+{"goal":"Write deterministic fixture corpus for parser validation suite","max_depth":2,"dag_nodes":8,"target_task_type":"WRITE","target_tool":"file"}
+{"goal":"Evaluate parser complexity growth after new grammar feature","max_depth":3,"dag_nodes":22,"target_task_type":"THINK","target_tool":"calculator"}
+{"goal":"Patch benchmark runner to isolate parser warmup phase","max_depth":2,"dag_nodes":13,"target_task_type":"CODE_INTERPRET","target_tool":"terminal"}
+{"goal":"Collect all governance policy blocks related to secret leakage","max_depth":1,"dag_nodes":5,"target_task_type":"RETRIEVE","target_tool":"terminal"}
+{"goal":"Write incident summary for prior parser production regression","max_depth":1,"dag_nodes":4,"target_task_type":"WRITE","target_tool":"file"}
+{"goal":"Investigate hybrid fallback rate spikes in nightly test cadence","max_depth":3,"dag_nodes":17,"target_task_type":"THINK","target_tool":"terminal"}
+{"goal":"Search benchmark manifest entries by commit and seed","max_depth":1,"dag_nodes":6,"target_task_type":"RETRIEVE","target_tool":"file"}
