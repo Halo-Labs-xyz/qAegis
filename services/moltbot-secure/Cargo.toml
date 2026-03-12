@@ -1,0 +1,76 @@
+[package]
+name = "moltbot-secure"
+version = "0.1.0"
+edition = "2021"
+description = "Secure encrypted wrapper layer for Moltbot - Quantum-resistant end-to-end encryption proxy"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Web framework
+axum = { version = "0.7", features = ["ws", "macros"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["fs", "cors"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Crypto
+sha2 = "0.10"
+sha3 = "0.10"
+hex = "0.4"
+rand = { version = "0.8", features = ["std_rng"] }
+aes-gcm = "0.10"
+chacha20poly1305 = "0.10"
+
+# Post-Quantum Cryptography (reuse from qrms)
+pqcrypto-dilithium = "0.5"
+pqcrypto-sphincsplus = "0.5"
+pqcrypto-traits = "0.3"
+k256 = "0.13"
+ecdsa = { version = "0.17.0-rc.13", package = "ecdsa" }
+signature = "2.2"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# UUID for session IDs
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# HTTP client for proxying to moltbot
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# Configuration
+config = "0.14"
+toml = "0.8"
+shellexpand = "3.1"
+
+# Key derivation
+argon2 = "0.5"
+pbkdf2 = "0.12"
+hmac = "0.12"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+[lib]
+name = "moltbot_secure"
+path = "src/lib.rs"
+
+[[bin]]
+name = "moltbot-secure"
+path = "src/main.rs"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = true

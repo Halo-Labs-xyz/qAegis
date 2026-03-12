@@ -1,0 +1,62 @@
+# Moltbot Secure Configuration Example
+# Copy this file to moltbot-secure.toml and customize
+
+bind_address = "127.0.0.1"
+port = 8443
+
+# Moltbot instance URL
+moltbot_url = "http://localhost:3000"
+
+# Optional: Moltbot API key if required
+# moltbot_api_key = "your-api-key-here"
+
+[encryption]
+# Encryption algorithm: "hybrid-pqc" (recommended) or "aes-gcm"
+algorithm = "hybrid-pqc"
+
+# Use post-quantum cryptography
+use_pqc = true
+
+# Use hybrid KEM (ML-KEM + HQC)
+use_hybrid_kem = true
+
+# Symmetric encryption algorithm: "aes-256-gcm" or "chacha20-poly1305"
+symmetric_algorithm = "aes-256-gcm"
+
+[auth]
+# JWT secret (auto-generated if not set)
+# jwt_secret = "your-secret-here"
+
+# JWT token expiration in hours
+jwt_expiry_hours = 24
+
+# Password hashing algorithm: "argon2" (recommended) or "pbkdf2"
+password_hash_algorithm = "argon2"
+
+# Require multi-factor authentication (planned feature)
+require_mfa = false
+
+# Maximum failed login attempts before lockout
+max_login_attempts = 5
+
+# Account lockout duration in minutes
+lockout_duration_minutes = 15
+
+[session]
+# Session timeout in minutes
+session_timeout_minutes = 60
+
+# Maximum concurrent sessions per user
+max_sessions_per_user = 10
+
+# Enable session-level encryption
+enable_session_encryption = true
+
+# Key storage directory
+key_storage_path = "./keys"
+
+# Enable automatic key rotation
+enable_key_rotation = true
+
+# Key rotation interval in hours
+key_rotation_interval_hours = 24

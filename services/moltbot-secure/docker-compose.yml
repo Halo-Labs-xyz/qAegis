@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  moltbot-secure:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: moltbot-secure
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./moltbot-secure.toml:/app/config/moltbot-secure.toml:ro
+      - ./keys:/app/keys
+    environment:
+      - RUST_LOG=info
+    restart: unless-stopped
+    networks:
+      - moltbot-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8443/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  nginx:
+    image: nginx:alpine
+    container_name: moltbot-secure-nginx
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - moltbot-secure
+    restart: unless-stopped
+    networks:
+      - moltbot-network
+
+networks:
+  moltbot-network:
+    driver: bridge

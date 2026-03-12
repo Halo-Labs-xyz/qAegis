@@ -1,0 +1,44 @@
+# Hybrid Quantum SWE-bench profile (qAegis v1)
+execution_mode: hybrid_quantum
+privacy_mode: zero_retention
+persistence_consent: none
+governance_profile: freedom_v1
+quantum:
+  backend: lightning.qubit
+  seed: 1337
+  timeout_ms: 1200
+  policy_parameters:
+    depth_weight: 0.35
+    complexity_weight: 0.40
+    dependency_weight: 0.25
+    backend_weight: 0.70
+    task_bias_retrieve: 0.0
+    task_bias_write: 0.0
+    task_bias_think: 0.0
+    task_bias_code_interpret: 0.0
+    task_bias_image_generation: 0.0
+    tool_bias_terminal: 0.0
+    tool_bias_file: 0.0
+    tool_bias_web_search: 0.0
+    tool_bias_calculator: 0.0
+benchmarks:
+  track: software_engineering
+  task_slice: swe_bench_verified_500
+  baselines:
+    - swe_bench/codex
+    - swe_bench/sonnet
+    - swe_bench/gemini
+    - roma_classical
+  metrics:
+    - pass_rate
+    - cost_per_task
+    - wall_clock_per_task
+    - policy_violation_rate
+    - privacy_leak_rate
+claims_gate:
+  required_artifacts:
+    - config_digest
+    - seed
+    - commit_sha
+    - task_set_digest
+    - reproducible_execution_manifest

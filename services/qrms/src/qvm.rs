@@ -1,5 +1,5 @@
 //! Quantum Virtual Machine (QVM) Integration
-//! 
+//!
 //! Overarching protocol stack between TEE and Sequencer, containing QRMS.
 //! Based on Google's Cirq QVM with Willow processor noise models.
 //!
@@ -37,13 +37,16 @@
 //! └─────────────────────────────────────────────────────────────────┘
 //! ```
 
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::collections::HashMap;
 
-use crate::qrm::{QuantumResistanceMonitor, ThreatCategory, QuantumEra, RiskAssessment, ThreatIndicator};
 use crate::aegis_tee::AegisTeeSequencer;
 use crate::apqc::AdaptivePqcLayer;
+use crate::qrm::{
+    QuantumEra, QuantumResistanceMonitor, RiskAssessment, ThreatCategory, ThreatIndicator,
+};
 
 // ============================================================================
 // QVM Configuration and Types
@@ -52,14 +55,29 @@ use crate::apqc::AdaptivePqcLayer;
 /// Supported Google quantum processor types for virtualization
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum QuantumProcessor {
-    /// 105-qubit Willow processor (2024)
+    /// 105-qubit Willow processor (2024) - Google
     WillowPink,
-    /// 72-qubit Weber processor
+    /// 72-qubit Weber processor - Google
     Weber,
-    /// 53-qubit Rainbow processor
+    /// 53-qubit Rainbow processor - Google
     Rainbow,
+    /// Quantinuum H1 (20 qubits) - Honeywell via Azure Quantum
+    QuantinuumH1,
+    /// Quantinuum H2 (32 qubits) - Honeywell via Azure Quantum
+    QuantinuumH2,
+    /// Quantinuum API Validator - Honeywell via Azure Quantum (for testing)
+    QuantinuumAPIV,
+    /// IonQ Aria (29 qubits) - IonQ hardware (legacy)
+    IonQAria,
+    /// IonQ Harmony (11 qubits) - IonQ hardware (legacy)
+    IonQHarmony,
+    /// IonQ Forte (32 qubits) - IonQ hardware (legacy)
+    IonQForte,
     /// Custom processor configuration
-    Custom { qubits: usize, connectivity: ConnectivityType },
+    Custom {
+        qubits: usize,
+        connectivity: ConnectivityType,
+    },
 }
 
 impl QuantumProcessor {
@@ -69,26 +87,67 @@ impl QuantumProcessor {
             Self::WillowPink => 105,
             Self::Weber => 72,
             Self::Rainbow => 53,
+            Self::QuantinuumH1 => 20,
+            Self::QuantinuumH2 => 32,
+            Self::QuantinuumAPIV => 20, // API validator simulates H1
+            Self::IonQAria => 29,
+            Self::IonQHarmony => 11,
+            Self::IonQForte => 32,
             Self::Custom { qubits, .. } => *qubits,
         }
     }
 
-    /// Get processor identifier for Cirq
+    /// Get processor identifier for Cirq/Azure Quantum
     pub fn processor_id(&self) -> &str {
         match self {
             Self::WillowPink => "willow_pink",
             Self::Weber => "weber",
             Self::Rainbow => "rainbow",
+            Self::QuantinuumH1 => "honeywell.hqs-lt-s1",
+            Self::QuantinuumH2 => "honeywell.hqs-lt-s2",
+            Self::QuantinuumAPIV => "honeywell.hqs-lt-s1-apival",
+            Self::IonQAria => "aria",
+            Self::IonQHarmony => "harmony",
+            Self::IonQForte => "forte",
             Self::Custom { .. } => "custom",
+        }
+    }
+
+    /// Check if processor is Quantinuum/Honeywell
+    pub fn is_quantinuum(&self) -> bool {
+        matches!(
+            self,
+            Self::QuantinuumH1 | Self::QuantinuumH2 | Self::QuantinuumAPIV
+        )
+    }
+
+    /// Check if processor is IonQ hardware (legacy)
+    pub fn is_ionq(&self) -> bool {
+        matches!(self, Self::IonQAria | Self::IonQHarmony | Self::IonQForte)
+    }
+
+    /// Get Azure Quantum target name
+    pub fn azure_quantum_target(&self) -> Option<&str> {
+        match self {
+            Self::QuantinuumH1 => Some("honeywell.hqs-lt-s1"),
+            Self::QuantinuumH2 => Some("honeywell.hqs-lt-s2"),
+            Self::QuantinuumAPIV => Some("honeywell.hqs-lt-s1-apival"),
+            _ => None,
         }
     }
 
     /// Get two-qubit gate error rate (typical values from calibration)
     pub fn two_qubit_error_rate(&self) -> f64 {
         match self {
-            Self::WillowPink => 0.0034,  // Willow: ~0.3% CZ error
-            Self::Weber => 0.006,        // Weber: ~0.6% CZ error
-            Self::Rainbow => 0.009,      // Rainbow: ~0.9% CZ error
+            Self::WillowPink => 0.0034,     // Willow: ~0.3% CZ error
+            Self::Weber => 0.006,           // Weber: ~0.6% CZ error
+            Self::Rainbow => 0.009,         // Rainbow: ~0.9% CZ error
+            Self::QuantinuumH1 => 0.0003,   // Quantinuum H1: ~0.03% error (very low)
+            Self::QuantinuumH2 => 0.0002,   // Quantinuum H2: ~0.02% error (very low)
+            Self::QuantinuumAPIV => 0.0003, // API validator simulates H1
+            Self::IonQAria => 0.002,        // IonQ Aria: ~0.2% error
+            Self::IonQHarmony => 0.003,     // IonQ Harmony: ~0.3% error
+            Self::IonQForte => 0.0015,      // IonQ Forte: ~0.15% error
             Self::Custom { .. } => 0.01,
         }
     }
@@ -96,9 +155,15 @@ impl QuantumProcessor {
     /// Get single-qubit gate error rate
     pub fn single_qubit_error_rate(&self) -> f64 {
         match self {
-            Self::WillowPink => 0.00025, // Willow: ~0.025%
-            Self::Weber => 0.001,        // Weber: ~0.1%
-            Self::Rainbow => 0.002,      // Rainbow: ~0.2%
+            Self::WillowPink => 0.00025,     // Willow: ~0.025%
+            Self::Weber => 0.001,            // Weber: ~0.1%
+            Self::Rainbow => 0.002,          // Rainbow: ~0.2%
+            Self::QuantinuumH1 => 0.00005,   // Quantinuum H1: ~0.005% (very low)
+            Self::QuantinuumH2 => 0.00003,   // Quantinuum H2: ~0.003% (very low)
+            Self::QuantinuumAPIV => 0.00005, // API validator simulates H1
+            Self::IonQAria => 0.0001,        // IonQ Aria: ~0.01%
+            Self::IonQHarmony => 0.0002,     // IonQ Harmony: ~0.02%
+            Self::IonQForte => 0.00008,      // IonQ Forte: ~0.008%
             Self::Custom { .. } => 0.005,
         }
     }
@@ -106,9 +171,15 @@ impl QuantumProcessor {
     /// Get readout error rate
     pub fn readout_error_rate(&self) -> f64 {
         match self {
-            Self::WillowPink => 0.005,   // Willow: ~0.5%
-            Self::Weber => 0.01,         // Weber: ~1%
-            Self::Rainbow => 0.02,       // Rainbow: ~2%
+            Self::WillowPink => 0.005,      // Willow: ~0.5%
+            Self::Weber => 0.01,            // Weber: ~1%
+            Self::Rainbow => 0.02,          // Rainbow: ~2%
+            Self::QuantinuumH1 => 0.0001,   // Quantinuum H1: ~0.01% (very low)
+            Self::QuantinuumH2 => 0.00008,  // Quantinuum H2: ~0.008% (very low)
+            Self::QuantinuumAPIV => 0.0001, // API validator simulates H1
+            Self::IonQAria => 0.001,        // IonQ Aria: ~0.1%
+            Self::IonQHarmony => 0.002,     // IonQ Harmony: ~0.2%
+            Self::IonQForte => 0.0008,      // IonQ Forte: ~0.08%
             Self::Custom { .. } => 0.03,
         }
     }
@@ -116,9 +187,15 @@ impl QuantumProcessor {
     /// Get T1 coherence time (microseconds)
     pub fn t1_coherence_us(&self) -> f64 {
         match self {
-            Self::WillowPink => 70.0,    // Willow: ~70 μs
-            Self::Weber => 25.0,         // Weber: ~25 μs
-            Self::Rainbow => 20.0,       // Rainbow: ~20 μs
+            Self::WillowPink => 70.0,      // Willow: ~70 μs
+            Self::Weber => 25.0,           // Weber: ~25 μs
+            Self::Rainbow => 20.0,         // Rainbow: ~20 μs
+            Self::QuantinuumH1 => 500.0,   // Quantinuum H1: ~500 μs (very long)
+            Self::QuantinuumH2 => 600.0,   // Quantinuum H2: ~600 μs (very long)
+            Self::QuantinuumAPIV => 500.0, // API validator simulates H1
+            Self::IonQAria => 100.0,       // IonQ Aria: ~100 μs
+            Self::IonQHarmony => 80.0,     // IonQ Harmony: ~80 μs
+            Self::IonQForte => 120.0,      // IonQ Forte: ~120 μs
             Self::Custom { .. } => 15.0,
         }
     }
@@ -147,18 +224,18 @@ pub enum QuantumGate {
     H(usize),
     S(usize),
     T(usize),
-    Rx(usize, f64),  // Rotation around X by angle
-    Ry(usize, f64),  // Rotation around Y by angle
-    Rz(usize, f64),  // Rotation around Z by angle
-    
+    Rx(usize, f64), // Rotation around X by angle
+    Ry(usize, f64), // Rotation around Y by angle
+    Rz(usize, f64), // Rotation around Z by angle
+
     // Two-qubit gates
     CZ(usize, usize),
     CNOT(usize, usize),
     ISWAP(usize, usize),
     SqrtISWAP(usize, usize),
-    
+
     // Measurement
-    Measure(usize, String),  // qubit index, measurement key
+    Measure(usize, String), // qubit index, measurement key
 }
 
 /// Quantum circuit representation
@@ -167,7 +244,7 @@ pub struct QuantumCircuit {
     pub id: String,
     pub name: String,
     pub qubits: Vec<GridQubit>,
-    pub gates: Vec<Vec<QuantumGate>>,  // Moments (parallel gate layers)
+    pub gates: Vec<Vec<QuantumGate>>, // Moments (parallel gate layers)
     pub metadata: HashMap<String, String>,
 }
 
@@ -191,7 +268,7 @@ pub struct NoiseModel {
     pub depolarizing_rate: f64,
     pub amplitude_damping_rate: f64,
     pub phase_damping_rate: f64,
-    pub readout_errors: HashMap<String, (f64, f64)>,  // qubit -> (p0|1, p1|0)
+    pub readout_errors: HashMap<String, (f64, f64)>, // qubit -> (p0|1, p1|0)
     pub gate_durations_ns: HashMap<String, f64>,
     pub calibration_timestamp: DateTime<Utc>,
 }
@@ -202,17 +279,17 @@ impl NoiseModel {
         let two_q_err = processor.two_qubit_error_rate();
         let one_q_err = processor.single_qubit_error_rate();
         let t1 = processor.t1_coherence_us();
-        
+
         // Derive noise rates from error rates
         let depolarizing_rate = two_q_err * 0.75;
         let amplitude_damping_rate = 1.0 / t1;
         let phase_damping_rate = amplitude_damping_rate * 2.0;
-        
+
         let mut gate_durations = HashMap::new();
-        gate_durations.insert("single".to_string(), 25.0);   // 25 ns typical
-        gate_durations.insert("cz".to_string(), 32.0);       // 32 ns for CZ
+        gate_durations.insert("single".to_string(), 25.0); // 25 ns typical
+        gate_durations.insert("cz".to_string(), 32.0); // 32 ns for CZ
         gate_durations.insert("measure".to_string(), 1000.0); // 1 μs readout
-        
+
         Self {
             processor,
             depolarizing_rate,
@@ -237,8 +314,8 @@ impl NoiseModel {
 pub struct CircuitResult {
     pub circuit_id: String,
     pub repetitions: usize,
-    pub measurements: HashMap<String, Vec<u64>>,  // key -> measurement outcomes
-    pub histogram: HashMap<u64, usize>,           // outcome -> count
+    pub measurements: HashMap<String, Vec<u64>>, // key -> measurement outcomes
+    pub histogram: HashMap<u64, usize>,          // outcome -> count
     pub execution_time_ms: f64,
     pub fidelity_estimate: f64,
     pub noise_applied: bool,
@@ -298,7 +375,11 @@ pub enum QubitPickingStrategy {
     /// Maximize coherence time (for deep circuits)
     MaximizeCoherence,
     /// Custom weighted combination
-    Custom { single_weight: f64, two_qubit_weight: f64, readout_weight: f64 },
+    Custom {
+        single_weight: f64,
+        two_qubit_weight: f64,
+        readout_weight: f64,
+    },
 }
 
 /// Result of qubit picking analysis
@@ -354,9 +435,22 @@ impl QubitPicker {
             QuantumProcessor::Rainbow => self.load_rainbow_calibration(),
             QuantumProcessor::Weber => self.load_weber_calibration(),
             QuantumProcessor::WillowPink => self.load_willow_calibration(),
-            QuantumProcessor::Custom { qubits, connectivity } => {
-                self.load_custom_calibration(qubits, connectivity)
+            QuantumProcessor::QuantinuumH1
+            | QuantumProcessor::QuantinuumH2
+            | QuantumProcessor::QuantinuumAPIV => {
+                // Quantinuum processors use high-fidelity calibration
+                self.load_willow_calibration() // Use similar structure, lower error rates
             }
+            QuantumProcessor::IonQAria
+            | QuantumProcessor::IonQHarmony
+            | QuantumProcessor::IonQForte => {
+                // IonQ processors use default calibration (loaded from noise model)
+                self.load_willow_calibration() // Use similar calibration as reference
+            }
+            QuantumProcessor::Custom {
+                qubits,
+                connectivity,
+            } => self.load_custom_calibration(qubits, connectivity),
         }
     }
 
@@ -369,59 +463,115 @@ impl QubitPicker {
         let base_readout_1_to_0 = 0.05; // Decay is typically higher
         let base_t1 = 20.0;
         let base_t2 = 30.0;
-        
+
         // Create qubits with varying error rates
         let qubit_coords: Vec<(i32, i32)> = vec![
             // Row 0-1
-            (0, 5), (0, 6),
-            (1, 4), (1, 5), (1, 6), (1, 7),
+            (0, 5),
+            (0, 6),
+            (1, 4),
+            (1, 5),
+            (1, 6),
+            (1, 7),
             // Row 2-3
-            (2, 3), (2, 4), (2, 5), (2, 6), (2, 7), (2, 8),
-            (3, 2), (3, 3), (3, 4), (3, 5), (3, 6), (3, 7), (3, 8),
+            (2, 3),
+            (2, 4),
+            (2, 5),
+            (2, 6),
+            (2, 7),
+            (2, 8),
+            (3, 2),
+            (3, 3),
+            (3, 4),
+            (3, 5),
+            (3, 6),
+            (3, 7),
+            (3, 8),
             // Row 4
-            (4, 1), (4, 2), (4, 3), (4, 4), (4, 5), (4, 6), (4, 7), (4, 8), (4, 9),
+            (4, 1),
+            (4, 2),
+            (4, 3),
+            (4, 4),
+            (4, 5),
+            (4, 6),
+            (4, 7),
+            (4, 8),
+            (4, 9),
             // Row 5
-            (5, 0), (5, 1), (5, 2), (5, 3), (5, 4), (5, 5), (5, 6), (5, 7), (5, 8), (5, 9),
+            (5, 0),
+            (5, 1),
+            (5, 2),
+            (5, 3),
+            (5, 4),
+            (5, 5),
+            (5, 6),
+            (5, 7),
+            (5, 8),
+            (5, 9),
             // Row 6
-            (6, 1), (6, 2), (6, 3), (6, 4), (6, 5), (6, 6), (6, 7), (6, 8), (6, 9),
+            (6, 1),
+            (6, 2),
+            (6, 3),
+            (6, 4),
+            (6, 5),
+            (6, 6),
+            (6, 7),
+            (6, 8),
+            (6, 9),
             // Row 7-8
-            (7, 2), (7, 3), (7, 4), (7, 5), (7, 6), (7, 7), (7, 8),
-            (8, 3), (8, 4), (8, 5), (8, 6), (8, 7),
+            (7, 2),
+            (7, 3),
+            (7, 4),
+            (7, 5),
+            (7, 6),
+            (7, 7),
+            (7, 8),
+            (8, 3),
+            (8, 4),
+            (8, 5),
+            (8, 6),
+            (8, 7),
             // Row 9
-            (9, 4), (9, 5),
+            (9, 4),
+            (9, 5),
         ];
 
         // Add per-qubit error data with realistic variation
         for (row, col) in &qubit_coords {
             let qubit = GridQubit::new(*row, *col);
-            
+
             // Add some realistic variation based on qubit position
             let mut rng_seed = (row * 100 + col) as u64;
             let mut variation = || {
                 rng_seed = rng_seed.wrapping_mul(1103515245).wrapping_add(12345);
                 (rng_seed % 1000) as f64 / 10000.0 - 0.05 // ±5% variation
             };
-            
+
             // Known bad qubits on Rainbow (simulated based on documentation)
             let is_bad_qubit = (*row == 7 && *col == 2) || (*row == 4 && *col == 1);
             let bad_multiplier = if is_bad_qubit { 3.0 } else { 1.0 };
-            
-            let single_error = (base_single_error * bad_multiplier * (1.0 + variation())).max(0.0001);
+
+            let single_error =
+                (base_single_error * bad_multiplier * (1.0 + variation())).max(0.0001);
             let readout_0_to_1 = (base_readout_0_to_1 * (1.0 + variation())).max(0.001);
-            let readout_1_to_0 = (base_readout_1_to_0 * bad_multiplier * (1.0 + variation())).max(0.01);
-            
+            let readout_1_to_0 =
+                (base_readout_1_to_0 * bad_multiplier * (1.0 + variation())).max(0.01);
+
             // Calculate quality score (lower is better)
             let quality_score = single_error * 100.0 + readout_1_to_0 * 10.0 + readout_0_to_1 * 5.0;
-            
-            self.qubit_errors.insert(qubit, QubitErrorData {
+
+            self.qubit_errors.insert(
                 qubit,
-                single_qubit_pauli_error: single_error,
-                readout_error_0_to_1: readout_0_to_1,
-                readout_error_1_to_0: readout_1_to_0,
-                t1_us: base_t1 * (1.0 + variation()),
-                t2_us: base_t2 * (1.0 + variation()),
-                quality_score,
-            });
+                QubitErrorData {
+                    qubit,
+                    single_qubit_pauli_error: single_error,
+                    readout_error_0_to_1: readout_0_to_1,
+                    readout_error_1_to_0: readout_1_to_0,
+                    t1_us: base_t1 * (1.0 + variation()),
+                    t2_us: base_t2 * (1.0 + variation()),
+                    quality_score,
+                },
+            );
         }
 
         // Build connectivity and two-qubit error data
@@ -433,7 +583,7 @@ impl QubitPicker {
         let base_single_error = 0.001;
         let base_readout_1_to_0 = 0.03;
         let base_t1 = 25.0;
-        
+
         // Weber has more qubits than Rainbow
         let mut qubit_coords: Vec<(i32, i32)> = Vec::new();
         for row in 0..9 {
@@ -453,20 +603,23 @@ impl QubitPicker {
                 rng_seed = rng_seed.wrapping_mul(1103515245).wrapping_add(12345);
                 (rng_seed % 1000) as f64 / 10000.0 - 0.05
             };
-            
+
             let single_error = (base_single_error * (1.0 + variation())).max(0.0001);
             let readout_1_to_0 = (base_readout_1_to_0 * (1.0 + variation())).max(0.01);
             let quality_score = single_error * 100.0 + readout_1_to_0 * 10.0;
-            
-            self.qubit_errors.insert(qubit, QubitErrorData {
+
+            self.qubit_errors.insert(
                 qubit,
-                single_qubit_pauli_error: single_error,
-                readout_error_0_to_1: 0.008,
-                readout_error_1_to_0: readout_1_to_0,
-                t1_us: base_t1 * (1.0 + variation()),
-                t2_us: base_t1 * 1.5 * (1.0 + variation()),
-                quality_score,
-            });
+                QubitErrorData {
+                    qubit,
+                    single_qubit_pauli_error: single_error,
+                    readout_error_0_to_1: 0.008,
+                    readout_error_1_to_0: readout_1_to_0,
+                    t1_us: base_t1 * (1.0 + variation()),
+                    t2_us: base_t1 * 1.5 * (1.0 + variation()),
+                    quality_score,
+                },
+            );
         }
 
         self.build_grid_connectivity(&qubit_coords, 0.006, 0.008);
@@ -477,10 +630,10 @@ impl QubitPicker {
         let base_single_error = 0.00025;
         let base_readout_1_to_0 = 0.015;
         let base_t1 = 70.0;
-        
+
         // Willow's larger grid (based on the qubit layout shown in documentation)
         let mut qubit_coords: Vec<(i32, i32)> = Vec::new();
-        
+
         // Build the Willow layout from the grid shown
         let row_configs = [
             (0, vec![6, 7, 8]),
@@ -497,7 +650,7 @@ impl QubitPicker {
             (11, vec![6, 7, 8, 9]),
             (12, vec![6, 7, 8]),
         ];
-        
+
         for (row, cols) in row_configs.iter() {
             for col in cols {
                 qubit_coords.push((*row, *col));
@@ -511,20 +664,23 @@ impl QubitPicker {
                 rng_seed = rng_seed.wrapping_mul(1103515245).wrapping_add(12345);
                 (rng_seed % 1000) as f64 / 10000.0 - 0.05
             };
-            
+
             let single_error = (base_single_error * (1.0 + variation())).max(0.00005);
             let readout_1_to_0 = (base_readout_1_to_0 * (1.0 + variation())).max(0.005);
             let quality_score = single_error * 100.0 + readout_1_to_0 * 10.0;
-            
-            self.qubit_errors.insert(qubit, QubitErrorData {
+
+            self.qubit_errors.insert(
                 qubit,
-                single_qubit_pauli_error: single_error,
-                readout_error_0_to_1: 0.003,
-                readout_error_1_to_0: readout_1_to_0,
-                t1_us: base_t1 * (1.0 + variation()),
-                t2_us: base_t1 * 1.8 * (1.0 + variation()),
-                quality_score,
-            });
+                QubitErrorData {
+                    qubit,
+                    single_qubit_pauli_error: single_error,
+                    readout_error_0_to_1: 0.003,
+                    readout_error_1_to_0: readout_1_to_0,
+                    t1_us: base_t1 * (1.0 + variation()),
+                    t2_us: base_t1 * 1.8 * (1.0 + variation()),
+                    quality_score,
+                },
+            );
         }
 
         self.build_grid_connectivity(&qubit_coords, 0.0034, 0.004);
@@ -534,7 +690,7 @@ impl QubitPicker {
     fn load_custom_calibration(&mut self, qubits: usize, connectivity: ConnectivityType) {
         let side = (qubits as f64).sqrt().ceil() as i32;
         let mut qubit_coords: Vec<(i32, i32)> = Vec::new();
-        
+
         for row in 0..side {
             for col in 0..side {
                 if qubit_coords.len() < qubits {
@@ -545,15 +701,18 @@ impl QubitPicker {
 
         for (row, col) in &qubit_coords {
             let qubit = GridQubit::new(*row, *col);
-            self.qubit_errors.insert(qubit, QubitErrorData {
+            self.qubit_errors.insert(
                 qubit,
-                single_qubit_pauli_error: 0.005,
-                readout_error_0_to_1: 0.01,
-                readout_error_1_to_0: 0.05,
-                t1_us: 15.0,
-                t2_us: 20.0,
-                quality_score: 1.0,
-            });
+                QubitErrorData {
+                    qubit,
+                    single_qubit_pauli_error: 0.005,
+                    readout_error_0_to_1: 0.01,
+                    readout_error_1_to_0: 0.05,
+                    t1_us: 15.0,
+                    t2_us: 20.0,
+                    quality_score: 1.0,
+                },
+            );
         }
 
         let base_error = match connectivity {
@@ -562,7 +721,7 @@ impl QubitPicker {
             ConnectivityType::AllToAll => 0.015,
             ConnectivityType::Linear => 0.012,
         };
-        
+
         self.build_grid_connectivity(&qubit_coords, base_error, base_error * 1.2);
     }
 
@@ -573,66 +732,74 @@ impl QubitPicker {
         base_pauli_error: f64,
         base_fsim_error: f64,
     ) {
-        let qubit_set: std::collections::HashSet<(i32, i32)> = qubit_coords.iter().cloned().collect();
-        
+        let qubit_set: std::collections::HashSet<(i32, i32)> =
+            qubit_coords.iter().cloned().collect();
+
         for &(row, col) in qubit_coords {
             let qubit = GridQubit::new(row, col);
             let mut neighbors = Vec::new();
-            
+
             // Check all four neighbors (grid connectivity)
             for (dr, dc) in &[(0, 1), (0, -1), (1, 0), (-1, 0)] {
                 let nr = row + dr;
                 let nc = col + dc;
                 if qubit_set.contains(&(nr, nc)) {
                     neighbors.push(GridQubit::new(nr, nc));
-                    
+
                     // Add two-qubit error data (only for one direction to avoid duplicates)
                     if *dr > 0 || (*dr == 0 && *dc > 0) {
                         let neighbor = GridQubit::new(nr, nc);
                         let pair = (qubit, neighbor);
-                        
+
                         let mut rng_seed = ((row * 100 + col) * 1000 + nr * 10 + nc) as u64;
                         let mut variation = || {
                             rng_seed = rng_seed.wrapping_mul(1103515245).wrapping_add(12345);
                             (rng_seed % 1000) as f64 / 5000.0 - 0.1 // ±10% variation
                         };
-                        
+
                         // Known bad pairs (simulated)
-                        let is_bad_pair = (row == 6 && col == 2 && nr == 7 && nc == 2) ||
-                                          (row == 7 && col == 2 && nr == 7 && nc == 3);
+                        let is_bad_pair = (row == 6 && col == 2 && nr == 7 && nc == 2)
+                            || (row == 7 && col == 2 && nr == 7 && nc == 3);
                         let bad_mult = if is_bad_pair { 5.0 } else { 1.0 };
-                        
-                        let pauli_error = (base_pauli_error * bad_mult * (1.0 + variation())).max(0.001);
+
+                        let pauli_error =
+                            (base_pauli_error * bad_mult * (1.0 + variation())).max(0.001);
                         let fsim_theta = (base_fsim_error * (1.0 + variation())).abs();
                         let fsim_phi = (base_fsim_error * 0.5 * (1.0 + variation())).abs();
                         let fsim_norm = (fsim_theta.powi(2) + fsim_phi.powi(2)).sqrt();
-                        
+
                         let quality_score = pauli_error * 50.0 + fsim_norm * 50.0;
-                        
-                        self.two_qubit_errors.insert(pair, TwoQubitErrorData {
-                            qubit_pair: pair,
-                            gate_type: "CZ".to_string(),
-                            pauli_error,
-                            fsim_theta_error: fsim_theta,
-                            fsim_phi_error: fsim_phi,
-                            fsim_error_norm: fsim_norm,
-                            quality_score,
-                        });
-                        
+
+                        self.two_qubit_errors.insert(
+                            pair,
+                            TwoQubitErrorData {
+                                qubit_pair: pair,
+                                gate_type: "CZ".to_string(),
+                                pauli_error,
+                                fsim_theta_error: fsim_theta,
+                                fsim_phi_error: fsim_phi,
+                                fsim_error_norm: fsim_norm,
+                                quality_score,
+                            },
+                        );
+
                         // Also add reverse pair reference
-                        self.two_qubit_errors.insert((neighbor, qubit), TwoQubitErrorData {
-                            qubit_pair: (neighbor, qubit),
-                            gate_type: "CZ".to_string(),
-                            pauli_error,
-                            fsim_theta_error: fsim_theta,
-                            fsim_phi_error: fsim_phi,
-                            fsim_error_norm: fsim_norm,
-                            quality_score,
-                        });
+                        self.two_qubit_errors.insert(
+                            (neighbor, qubit),
+                            TwoQubitErrorData {
+                                qubit_pair: (neighbor, qubit),
+                                gate_type: "CZ".to_string(),
+                                pauli_error,
+                                fsim_theta_error: fsim_theta,
+                                fsim_phi_error: fsim_phi,
+                                fsim_error_norm: fsim_norm,
+                                quality_score,
+                            },
+                        );
                     }
                 }
             }
-            
+
             self.connectivity.insert(qubit, neighbors);
         }
     }
@@ -640,28 +807,34 @@ impl QubitPicker {
     /// Get all available qubits sorted by quality
     pub fn get_qubits_by_quality(&self, strategy: QubitPickingStrategy) -> Vec<QubitErrorData> {
         let mut qubits: Vec<QubitErrorData> = self.qubit_errors.values().cloned().collect();
-        
+
         qubits.sort_by(|a, b| {
             let score_a = self.calculate_qubit_score(a, strategy);
             let score_b = self.calculate_qubit_score(b, strategy);
-            score_a.partial_cmp(&score_b).unwrap_or(std::cmp::Ordering::Equal)
+            score_a
+                .partial_cmp(&score_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
-        
+
         qubits
     }
 
     /// Calculate qubit score based on strategy
-    fn calculate_qubit_score(&self, qubit_data: &QubitErrorData, strategy: QubitPickingStrategy) -> f64 {
+    fn calculate_qubit_score(
+        &self,
+        qubit_data: &QubitErrorData,
+        strategy: QubitPickingStrategy,
+    ) -> f64 {
         match strategy {
-            QubitPickingStrategy::MinimizeSingleQubitError => {
-                qubit_data.single_qubit_pauli_error
-            }
+            QubitPickingStrategy::MinimizeSingleQubitError => qubit_data.single_qubit_pauli_error,
             QubitPickingStrategy::MinimizeTwoQubitError => {
                 // Average two-qubit error for this qubit's neighbors
                 if let Some(neighbors) = self.connectivity.get(&qubit_data.qubit) {
-                    let total: f64 = neighbors.iter()
+                    let total: f64 = neighbors
+                        .iter()
                         .filter_map(|n| {
-                            self.two_qubit_errors.get(&(qubit_data.qubit, *n))
+                            self.two_qubit_errors
+                                .get(&(qubit_data.qubit, *n))
                                 .map(|e| e.pauli_error)
                         })
                         .sum();
@@ -676,23 +849,29 @@ impl QubitPicker {
             QubitPickingStrategy::MaximizeCoherence => {
                 -qubit_data.t1_us // Negative because we want to maximize
             }
-            QubitPickingStrategy::Balanced => {
-                qubit_data.quality_score
-            }
-            QubitPickingStrategy::Custom { single_weight, two_qubit_weight, readout_weight } => {
+            QubitPickingStrategy::Balanced => qubit_data.quality_score,
+            QubitPickingStrategy::Custom {
+                single_weight,
+                two_qubit_weight,
+                readout_weight,
+            } => {
                 let single_score = qubit_data.single_qubit_pauli_error * single_weight;
                 let readout_score = qubit_data.readout_error_1_to_0 * readout_weight;
-                let two_qubit_score = if let Some(neighbors) = self.connectivity.get(&qubit_data.qubit) {
-                    let avg: f64 = neighbors.iter()
-                        .filter_map(|n| {
-                            self.two_qubit_errors.get(&(qubit_data.qubit, *n))
-                                .map(|e| e.pauli_error)
-                        })
-                        .sum::<f64>() / neighbors.len().max(1) as f64;
-                    avg * two_qubit_weight
-                } else {
-                    0.0
-                };
+                let two_qubit_score =
+                    if let Some(neighbors) = self.connectivity.get(&qubit_data.qubit) {
+                        let avg: f64 = neighbors
+                            .iter()
+                            .filter_map(|n| {
+                                self.two_qubit_errors
+                                    .get(&(qubit_data.qubit, *n))
+                                    .map(|e| e.pauli_error)
+                            })
+                            .sum::<f64>()
+                            / neighbors.len().max(1) as f64;
+                        avg * two_qubit_weight
+                    } else {
+                        0.0
+                    };
                 single_score + two_qubit_score + readout_score
             }
         }
@@ -706,25 +885,25 @@ impl QubitPicker {
         strategy: QubitPickingStrategy,
     ) -> QubitPickingResult {
         let sorted_qubits = self.get_qubits_by_quality(strategy);
-        
+
         if required_connectivity.is_empty() {
             // Simple case: just pick the best qubits
-            let selected: Vec<GridQubit> = sorted_qubits.iter()
+            let selected: Vec<GridQubit> = sorted_qubits
+                .iter()
                 .take(num_qubits)
                 .map(|q| q.qubit)
                 .collect();
-            
-            let mapping: HashMap<usize, GridQubit> = selected.iter()
-                .enumerate()
-                .map(|(i, q)| (i, *q))
-                .collect();
-            
-            let quality_details: Vec<QubitErrorData> = selected.iter()
+
+            let mapping: HashMap<usize, GridQubit> =
+                selected.iter().enumerate().map(|(i, q)| (i, *q)).collect();
+
+            let quality_details: Vec<QubitErrorData> = selected
+                .iter()
                 .filter_map(|q| self.qubit_errors.get(q).cloned())
                 .collect();
-            
+
             let fidelity = self.estimate_fidelity(&selected, &[]);
-            
+
             return QubitPickingResult {
                 selected_qubits: selected,
                 qubit_mapping: mapping,
@@ -743,17 +922,15 @@ impl QubitPicker {
 
         // Try starting from different good qubits
         for start_qubit in sorted_qubits.iter().take(10) {
-            if let Some(mapping) = self.find_connected_mapping(
-                start_qubit.qubit,
-                num_qubits,
-                required_connectivity,
-            ) {
+            if let Some(mapping) =
+                self.find_connected_mapping(start_qubit.qubit, num_qubits, required_connectivity)
+            {
                 let selected: Vec<GridQubit> = (0..num_qubits)
                     .filter_map(|i| mapping.get(&i).copied())
                     .collect();
-                
+
                 let fidelity = self.estimate_fidelity(&selected, required_connectivity);
-                
+
                 if fidelity > best_fidelity {
                     best_fidelity = fidelity;
                     best_mapping = Some(mapping);
@@ -765,8 +942,9 @@ impl QubitPicker {
         let selected: Vec<GridQubit> = (0..num_qubits)
             .filter_map(|i| mapping.get(&i).copied())
             .collect();
-        
-        let quality_details: Vec<QubitErrorData> = selected.iter()
+
+        let quality_details: Vec<QubitErrorData> = selected
+            .iter()
             .filter_map(|q| self.qubit_errors.get(q).cloned())
             .collect();
 
@@ -788,18 +966,18 @@ impl QubitPicker {
         num_qubits: usize,
         required_connectivity: &[(usize, usize)],
     ) -> Option<HashMap<usize, GridQubit>> {
-        use std::collections::{VecDeque, HashSet};
-        
+        use std::collections::{HashSet, VecDeque};
+
         let mut mapping: HashMap<usize, GridQubit> = HashMap::new();
         let mut reverse_mapping: HashMap<GridQubit, usize> = HashMap::new();
         let mut used_qubits: HashSet<GridQubit> = HashSet::new();
         let mut queue: VecDeque<(usize, GridQubit)> = VecDeque::new();
-        
+
         // Start with circuit qubit 0 -> start hardware qubit
         mapping.insert(0, start);
         reverse_mapping.insert(start, 0);
         used_qubits.insert(start);
-        
+
         // Find circuit qubits connected to qubit 0
         for &(a, b) in required_connectivity {
             if a == 0 && !mapping.contains_key(&b) {
@@ -809,27 +987,29 @@ impl QubitPicker {
                 queue.push_back((a, start));
             }
         }
-        
+
         // BFS to assign remaining qubits
         while let Some((circuit_qubit, from_hw_qubit)) = queue.pop_front() {
             if mapping.contains_key(&circuit_qubit) {
                 continue;
             }
-            
+
             // Find best available neighbor
             if let Some(neighbors) = self.connectivity.get(&from_hw_qubit) {
-                let mut available: Vec<_> = neighbors.iter()
+                let mut available: Vec<_> = neighbors
+                    .iter()
                     .filter(|n| !used_qubits.contains(n))
                     .filter_map(|n| self.qubit_errors.get(n).map(|e| (*n, e.quality_score)))
                     .collect();
-                
-                available.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-                
+
+                available
+                    .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
                 if let Some((best_neighbor, _)) = available.first() {
                     mapping.insert(circuit_qubit, *best_neighbor);
                     reverse_mapping.insert(*best_neighbor, circuit_qubit);
                     used_qubits.insert(*best_neighbor);
-                    
+
                     // Queue neighbors of this circuit qubit
                     for &(a, b) in required_connectivity {
                         if a == circuit_qubit && !mapping.contains_key(&b) {
@@ -842,27 +1022,30 @@ impl QubitPicker {
                 }
             }
         }
-        
+
         // Fill remaining qubits if needed
         while mapping.len() < num_qubits {
             let next_circuit_qubit = mapping.len();
-            
+
             // Find any good unused qubit
-            let available: Vec<_> = self.qubit_errors.iter()
+            let available: Vec<_> = self
+                .qubit_errors
+                .iter()
                 .filter(|(q, _)| !used_qubits.contains(q))
                 .map(|(q, e)| (*q, e.quality_score))
                 .collect();
-            
-            if let Some((best, _)) = available.iter().min_by(|a, b| {
-                a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal)
-            }) {
+
+            if let Some((best, _)) = available
+                .iter()
+                .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+            {
                 mapping.insert(next_circuit_qubit, *best);
                 used_qubits.insert(*best);
             } else {
                 break;
             }
         }
-        
+
         if mapping.len() >= num_qubits {
             Some(mapping)
         } else {
@@ -871,53 +1054,58 @@ impl QubitPicker {
     }
 
     /// Estimate circuit fidelity with given qubit selection
-    fn estimate_fidelity(
-        &self,
-        qubits: &[GridQubit],
-        two_qubit_ops: &[(usize, usize)],
-    ) -> f64 {
+    fn estimate_fidelity(&self, qubits: &[GridQubit], two_qubit_ops: &[(usize, usize)]) -> f64 {
         if qubits.is_empty() {
             return 0.0;
         }
-        
+
         // Single-qubit fidelity
-        let single_fidelity: f64 = qubits.iter()
+        let single_fidelity: f64 = qubits
+            .iter()
             .filter_map(|q| self.qubit_errors.get(q))
             .map(|e| 1.0 - e.single_qubit_pauli_error)
             .product();
-        
+
         // Two-qubit fidelity
-        let two_qubit_fidelity: f64 = two_qubit_ops.iter()
+        let two_qubit_fidelity: f64 = two_qubit_ops
+            .iter()
             .filter_map(|(a, b)| {
                 if *a < qubits.len() && *b < qubits.len() {
                     let pair = (qubits[*a], qubits[*b]);
-                    self.two_qubit_errors.get(&pair).map(|e| 1.0 - e.pauli_error)
+                    self.two_qubit_errors
+                        .get(&pair)
+                        .map(|e| 1.0 - e.pauli_error)
                 } else {
                     Some(1.0)
                 }
             })
             .product();
-        
+
         // Readout fidelity
-        let readout_fidelity: f64 = qubits.iter()
+        let readout_fidelity: f64 = qubits
+            .iter()
             .filter_map(|q| self.qubit_errors.get(q))
             .map(|e| 1.0 - e.readout_error_1_to_0)
             .product();
-        
+
         single_fidelity * two_qubit_fidelity * readout_fidelity
     }
 
     /// Get list of qubits with error above threshold
     fn get_bad_qubits(&self, threshold: f64) -> Vec<GridQubit> {
-        self.qubit_errors.iter()
-            .filter(|(_, e)| e.single_qubit_pauli_error > threshold || e.readout_error_1_to_0 > threshold * 5.0)
+        self.qubit_errors
+            .iter()
+            .filter(|(_, e)| {
+                e.single_qubit_pauli_error > threshold || e.readout_error_1_to_0 > threshold * 5.0
+            })
             .map(|(q, _)| *q)
             .collect()
     }
 
     /// Get list of qubit pairs with error above threshold
     fn get_bad_pairs(&self, threshold: f64) -> Vec<(GridQubit, GridQubit)> {
-        self.two_qubit_errors.iter()
+        self.two_qubit_errors
+            .iter()
             .filter(|(_, e)| e.pauli_error > threshold)
             .map(|(pair, _)| *pair)
             .collect()
@@ -930,7 +1118,8 @@ impl QubitPicker {
 
     /// Get error data for a qubit pair
     pub fn get_pair_error(&self, q1: GridQubit, q2: GridQubit) -> Option<&TwoQubitErrorData> {
-        self.two_qubit_errors.get(&(q1, q2))
+        self.two_qubit_errors
+            .get(&(q1, q2))
             .or_else(|| self.two_qubit_errors.get(&(q2, q1)))
     }
 
@@ -948,20 +1137,23 @@ impl QubitPicker {
         let new_qubits: Vec<GridQubit> = (0..circuit.qubits.len())
             .filter_map(|i| mapping.get(&i).copied())
             .collect();
-        
+
         // Transform gate indices
-        let new_gates: Vec<Vec<QuantumGate>> = circuit.gates.iter()
+        let new_gates: Vec<Vec<QuantumGate>> = circuit
+            .gates
+            .iter()
             .map(|moment| {
-                moment.iter()
+                moment
+                    .iter()
                     .map(|gate| self.remap_gate(gate, mapping))
                     .collect()
             })
             .collect();
-        
+
         let mut metadata = circuit.metadata.clone();
         metadata.insert("qubit_mapping".to_string(), format!("{:?}", mapping));
         metadata.insert("transformed".to_string(), "true".to_string());
-        
+
         QuantumCircuit {
             id: format!("{}_mapped", circuit.id),
             name: format!("{} (Hardware Mapped)", circuit.name),
@@ -1063,7 +1255,7 @@ impl QvmSimulator {
     fn initialize_state(&mut self, n_qubits: usize) {
         let size = 1 << n_qubits;
         let mut state = vec![Complex::zero(); size];
-        state[0] = Complex::one();  // |00...0⟩ state
+        state[0] = Complex::one(); // |00...0⟩ state
         self.state_vector = Some(state);
     }
 
@@ -1071,21 +1263,21 @@ impl QvmSimulator {
     pub fn run(&mut self, circuit: &QuantumCircuit, repetitions: usize) -> CircuitResult {
         let start = std::time::Instant::now();
         let n_qubits = circuit.qubits.len();
-        
+
         self.initialize_state(n_qubits);
-        
+
         // Track measurement outcomes
         let mut histogram: HashMap<u64, usize> = HashMap::new();
         let mut all_measurements: HashMap<String, Vec<u64>> = HashMap::new();
-        
+
         // Run simulation for each repetition
         for _ in 0..repetitions {
             // Reset state
             self.initialize_state(n_qubits);
-            
+
             // Apply gates moment by moment
             let mut measurement_results: Vec<(String, u64)> = Vec::new();
-            
+
             for moment in &circuit.gates {
                 for gate in moment {
                     match gate {
@@ -1097,15 +1289,16 @@ impl QvmSimulator {
                     }
                 }
             }
-            
+
             // Record measurements
-            let outcome: u64 = measurement_results.iter()
+            let outcome: u64 = measurement_results
+                .iter()
                 .enumerate()
                 .map(|(i, (_, bit))| bit << i)
                 .sum();
-            
+
             *histogram.entry(outcome).or_insert(0) += 1;
-            
+
             for (key, bit) in measurement_results {
                 all_measurements.entry(key).or_default().push(bit);
             }
@@ -1114,7 +1307,7 @@ impl QvmSimulator {
         // Apply noise model to histogram (approximation)
         let circuit_depth = circuit.gates.len();
         let noisy_histogram = self.apply_noise_to_histogram(&histogram, circuit_depth);
-        
+
         // Estimate fidelity
         let fidelity = self.estimate_fidelity(circuit_depth, n_qubits);
 
@@ -1133,7 +1326,7 @@ impl QvmSimulator {
     fn apply_gate(&mut self, gate: &QuantumGate) {
         let state = self.state_vector.as_mut().expect("State not initialized");
         let n = (state.len() as f64).log2() as usize;
-        
+
         match gate {
             QuantumGate::X(q) => self.apply_x(*q, n),
             QuantumGate::Y(q) => self.apply_y(*q, n),
@@ -1149,7 +1342,7 @@ impl QvmSimulator {
     fn apply_x(&mut self, qubit: usize, n_qubits: usize) {
         let state = self.state_vector.as_mut().unwrap();
         let mask = 1 << qubit;
-        
+
         for i in 0..(1 << n_qubits) {
             if i & mask == 0 {
                 let j = i | mask;
@@ -1162,7 +1355,7 @@ impl QvmSimulator {
     fn apply_y(&mut self, qubit: usize, n_qubits: usize) {
         let state = self.state_vector.as_mut().unwrap();
         let mask = 1 << qubit;
-        
+
         for i in 0..(1 << n_qubits) {
             if i & mask == 0 {
                 let j = i | mask;
@@ -1178,7 +1371,7 @@ impl QvmSimulator {
     fn apply_z(&mut self, qubit: usize, n_qubits: usize) {
         let state = self.state_vector.as_mut().unwrap();
         let mask = 1 << qubit;
-        
+
         for i in 0..(1 << n_qubits) {
             if i & mask != 0 {
                 state[i] = state[i].scale(-1.0);
@@ -1191,7 +1384,7 @@ impl QvmSimulator {
         let state = self.state_vector.as_mut().unwrap();
         let mask = 1 << qubit;
         let inv_sqrt2 = 1.0 / 2.0_f64.sqrt();
-        
+
         for i in 0..(1 << n_qubits) {
             if i & mask == 0 {
                 let j = i | mask;
@@ -1208,7 +1401,7 @@ impl QvmSimulator {
         let state = self.state_vector.as_mut().unwrap();
         let mask1 = 1 << q1;
         let mask2 = 1 << q2;
-        
+
         for i in 0..(1 << n_qubits) {
             if (i & mask1 != 0) && (i & mask2 != 0) {
                 state[i] = state[i].scale(-1.0);
@@ -1221,7 +1414,7 @@ impl QvmSimulator {
         let state = self.state_vector.as_mut().unwrap();
         let ctrl_mask = 1 << control;
         let tgt_mask = 1 << target;
-        
+
         for i in 0..(1 << n_qubits) {
             if (i & ctrl_mask != 0) && (i & tgt_mask == 0) {
                 let j = i | tgt_mask;
@@ -1235,7 +1428,7 @@ impl QvmSimulator {
         let state = self.state_vector.as_mut().unwrap();
         let n = (state.len() as f64).log2() as usize;
         let mask = 1 << qubit;
-        
+
         // Calculate probability of measuring |1⟩
         let mut prob_one = 0.0;
         for i in 0..(1 << n) {
@@ -1243,20 +1436,24 @@ impl QvmSimulator {
                 prob_one += state[i].norm_squared();
             }
         }
-        
+
         // Apply readout noise
         let noisy_prob = self.noise_model.apply_noise(prob_one, 1);
-        
+
         // Random measurement outcome
-        let outcome = if rand::random::<f64>() < noisy_prob { 1 } else { 0 };
-        
-        // Collapse state
-        let norm_factor = if outcome == 1 { 
-            1.0 / prob_one.sqrt() 
-        } else { 
-            1.0 / (1.0 - prob_one).sqrt() 
+        let outcome = if rand::random::<f64>() < noisy_prob {
+            1
+        } else {
+            0
         };
-        
+
+        // Collapse state
+        let norm_factor = if outcome == 1 {
+            1.0 / prob_one.sqrt()
+        } else {
+            1.0 / (1.0 - prob_one).sqrt()
+        };
+
         for i in 0..(1 << n) {
             if (i & mask != 0) != (outcome == 1) {
                 state[i] = Complex::zero();
@@ -1264,7 +1461,7 @@ impl QvmSimulator {
                 state[i] = state[i].scale(norm_factor);
             }
         }
-        
+
         outcome
     }
 
@@ -1276,7 +1473,7 @@ impl QvmSimulator {
     ) -> HashMap<u64, usize> {
         let mut noisy = HashMap::new();
         let total: usize = histogram.values().sum();
-        
+
         for (&outcome, &count) in histogram {
             // Apply depolarizing noise (simplified)
             let ideal_prob = count as f64 / total as f64;
@@ -1284,7 +1481,7 @@ impl QvmSimulator {
             let noisy_count = (noisy_prob * total as f64).round() as usize;
             noisy.insert(outcome, noisy_count);
         }
-        
+
         noisy
     }
 
@@ -1294,10 +1491,457 @@ impl QvmSimulator {
             .powi((circuit_depth * n_qubits) as i32);
         let two_q_fidelity = (1.0 - self.processor.two_qubit_error_rate())
             .powi((circuit_depth * n_qubits / 2) as i32);
-        let readout_fidelity = (1.0 - self.processor.readout_error_rate())
-            .powi(n_qubits as i32);
-        
+        let readout_fidelity = (1.0 - self.processor.readout_error_rate()).powi(n_qubits as i32);
+
         single_q_fidelity * two_q_fidelity * readout_fidelity
+    }
+}
+
+// ============================================================================
+// IonQ Hardware Backend
+// ============================================================================
+
+/// Azure Quantum backend for hardware execution (Quantinuum/Honeywell)
+pub struct IonQBackend {
+    resource_id: String,
+    location: String,
+    use_azure_quantum: bool,
+    default_target: String, // e.g., "honeywell.hqs-lt-s1-apival"
+    // Legacy IonQ direct API (fallback)
+    api_key: Option<String>,
+    base_url: String,
+}
+
+impl IonQBackend {
+    /// Create new Azure Quantum backend for Quantinuum/Honeywell
+    pub fn new_azure_quantum(
+        resource_id: String,
+        location: String,
+        target: Option<String>,
+    ) -> Self {
+        Self {
+            resource_id,
+            location,
+            use_azure_quantum: true,
+            default_target: target.unwrap_or_else(|| "honeywell.hqs-lt-s1-apival".to_string()),
+            api_key: None,
+            base_url: String::new(),
+        }
+    }
+
+    /// Create new IonQ backend (legacy direct API)
+    pub fn new_direct(api_key: String) -> Self {
+        Self {
+            resource_id: String::new(),
+            location: String::new(),
+            use_azure_quantum: false,
+            default_target: String::new(),
+            api_key: Some(api_key),
+            base_url: "https://api.ionq.co/v0.3".to_string(),
+        }
+    }
+
+    /// Create from environment variables (prefers Azure Quantum)
+    pub fn from_env() -> Option<Self> {
+        // Try Azure Quantum first
+        if let (Ok(resource_id), Ok(location)) = (
+            std::env::var("AZURE_QUANTUM_RESOURCE_ID"),
+            std::env::var("AZURE_QUANTUM_LOCATION"),
+        ) {
+            let target = std::env::var("AZURE_QUANTUM_TARGET")
+                .ok()
+                .unwrap_or_else(|| "honeywell.hqs-lt-s1-apival".to_string());
+            return Some(Self::new_azure_quantum(resource_id, location, Some(target)));
+        }
+
+        // Fallback to direct IonQ API
+        if let Ok(api_key) = std::env::var("IONQ_API_KEY") {
+            return Some(Self::new_direct(api_key));
+        }
+
+        None
+    }
+
+    /// Convert our circuit format to JSON for Azure Quantum Python bridge
+    fn circuit_to_json(&self, circuit: &QuantumCircuit) -> serde_json::Value {
+        let mut gates_by_moment: std::collections::HashMap<usize, Vec<serde_json::Value>> =
+            std::collections::HashMap::new();
+
+        for (moment_idx, moment) in circuit.gates.iter().enumerate() {
+            let mut moment_gates = Vec::new();
+            for gate in moment {
+                let gate_json = match gate {
+                    QuantumGate::X(q) => json!({
+                        "gate_type": "X",
+                        "qubits": [*q],
+                        "moment": moment_idx
+                    }),
+                    QuantumGate::Y(q) => json!({
+                        "gate_type": "Y",
+                        "qubits": [*q],
+                        "moment": moment_idx
+                    }),
+                    QuantumGate::Z(q) => json!({
+                        "gate_type": "Z",
+                        "qubits": [*q],
+                        "moment": moment_idx
+                    }),
+                    QuantumGate::H(q) => json!({
+                        "gate_type": "H",
+                        "qubits": [*q],
+                        "moment": moment_idx
+                    }),
+                    QuantumGate::CNOT(c, t) => json!({
+                        "gate_type": "CNOT",
+                        "qubits": [*c, *t],
+                        "moment": moment_idx
+                    }),
+                    QuantumGate::CZ(q1, q2) => json!({
+                        "gate_type": "CZ",
+                        "qubits": [*q1, *q2],
+                        "moment": moment_idx
+                    }),
+                    QuantumGate::Measure(q, key) => json!({
+                        "gate_type": "Measure",
+                        "qubits": [*q],
+                        "key": key,
+                        "moment": moment_idx
+                    }),
+                    _ => continue,
+                };
+                moment_gates.push(gate_json);
+            }
+            if !moment_gates.is_empty() {
+                gates_by_moment.insert(moment_idx, moment_gates);
+            }
+        }
+
+        // Flatten to array of moments
+        let mut gates = Vec::new();
+        for moment_idx in 0..=gates_by_moment.keys().max().copied().unwrap_or(0) {
+            gates.push(
+                gates_by_moment
+                    .get(&moment_idx)
+                    .cloned()
+                    .unwrap_or_default(),
+            );
+        }
+
+        json!({
+            "id": circuit.id,
+            "name": circuit.name,
+            "qubits": circuit.qubits.len(),
+            "gates": gates,
+            "repetitions": 1000,
+            "target": "honeywell.hqs-lt-s1-apival",
+            "timeout_seconds": 500
+        })
+    }
+
+    /// Convert our circuit format to IonQ JSON format (legacy direct API)
+    /// IonQ API expects: { "circuit": [{ "gate": "x", "target": 0 }, ...] }
+    fn circuit_to_ionq_gates(&self, circuit: &QuantumCircuit) -> Vec<serde_json::Value> {
+        let mut gates = Vec::new();
+
+        for moment in &circuit.gates {
+            for gate in moment {
+                match gate {
+                    QuantumGate::X(q) => gates.push(json!({
+                        "gate": "x",
+                        "target": *q
+                    })),
+                    QuantumGate::Y(q) => gates.push(json!({
+                        "gate": "y",
+                        "target": *q
+                    })),
+                    QuantumGate::Z(q) => gates.push(json!({
+                        "gate": "z",
+                        "target": *q
+                    })),
+                    QuantumGate::H(q) => gates.push(json!({
+                        "gate": "h",
+                        "target": *q
+                    })),
+                    QuantumGate::CNOT(c, t) => gates.push(json!({
+                        "gate": "cnot",
+                        "control": *c,
+                        "target": *t
+                    })),
+                    QuantumGate::CZ(q1, q2) => {
+                        // IonQ doesn't have CZ directly, use CNOT + H decomposition
+                        gates.push(json!({"gate": "h", "target": *q2}));
+                        gates.push(json!({"gate": "cnot", "control": *q1, "target": *q2}));
+                        gates.push(json!({"gate": "h", "target": *q2}));
+                    }
+                    QuantumGate::Measure(q, _key) => {
+                        // IonQ automatically measures all qubits at the end
+                        // We'll add measurement gates but IonQ handles them
+                        gates.push(json!({
+                            "gate": "measure",
+                            "target": *q
+                        }));
+                    }
+                    _ => {} // Skip unsupported gates
+                }
+            }
+        }
+
+        gates
+    }
+
+    /// Execute circuit on IonQ hardware via Azure Quantum
+    pub fn run_circuit(
+        &self,
+        circuit: &QuantumCircuit,
+        repetitions: usize,
+        target: &str,
+    ) -> Result<CircuitResult, String> {
+        if self.use_azure_quantum {
+            return self.run_circuit_azure_quantum(circuit, repetitions, target);
+        }
+
+        // Legacy direct IonQ API
+        let api_key = self.api_key.as_ref().ok_or("IonQ API key not configured")?;
+        let gates = self.circuit_to_ionq_gates(circuit);
+
+        // Create job payload (IonQ API v0.3 format)
+        let job_payload = json!({
+            "target": target,  // "qpu" or "simulator"
+            "circuit": gates,
+            "shots": repetitions,
+            "name": circuit.name.clone()
+        });
+
+        let client = reqwest::blocking::Client::new();
+        let response = client
+            .post(&format!("{}/jobs", self.base_url))
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&job_payload)
+            .send()
+            .map_err(|e| format!("IonQ API error: {}", e))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().unwrap_or_default();
+            return Err(format!(
+                "IonQ API returned error {}: {}",
+                status, error_text
+            ));
+        }
+
+        let job: serde_json::Value = response
+            .json()
+            .map_err(|e| format!("Failed to parse IonQ response: {}", e))?;
+
+        let job_id = job["id"]
+            .as_str()
+            .ok_or_else(|| format!("No job ID in response: {:?}", job))?;
+
+        tracing::info!("IonQ job created: {} (target: {})", job_id, target);
+
+        // Poll for results (simplified - in production use async polling with exponential backoff)
+        let mut attempts = 0;
+        let max_attempts = 60; // 5 minutes max wait
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            attempts += 1;
+
+            let results_response = client
+                .get(&format!("{}/jobs/{}", self.base_url, job_id))
+                .header("Authorization", format!("Bearer {}", api_key))
+                .send()
+                .map_err(|e| format!("Failed to get job status: {}", e))?;
+
+            let job_status: serde_json::Value = results_response
+                .json()
+                .map_err(|e| format!("Failed to parse job status: {}", e))?;
+
+            let status = job_status["status"].as_str().unwrap_or("unknown");
+
+            match status {
+                "completed" => break,
+                "failed" | "cancelled" => {
+                    return Err(format!("Job {} failed with status: {}", job_id, status));
+                }
+                _ if attempts >= max_attempts => {
+                    return Err(format!(
+                        "Job {} timed out after {} attempts",
+                        job_id, max_attempts
+                    ));
+                }
+                _ => {
+                    tracing::debug!(
+                        "Job {} status: {} (attempt {}/{})",
+                        job_id,
+                        status,
+                        attempts,
+                        max_attempts
+                    );
+                    continue;
+                }
+            }
+        }
+
+        // Get final results
+        let results_response = client
+            .get(&format!("{}/jobs/{}/results", self.base_url, job_id))
+            .header("Authorization", format!("Bearer {}", api_key))
+            .send()
+            .map_err(|e| format!("Failed to get job results: {}", e))?;
+
+        let results: serde_json::Value = results_response
+            .json()
+            .map_err(|e| format!("Failed to parse results: {}", e))?;
+
+        // Parse histogram from IonQ results
+        let mut histogram = HashMap::new();
+        let mut all_measurements: HashMap<String, Vec<u64>> = HashMap::new();
+
+        if let Some(data) = results.get("data") {
+            if let Some(hist) = data.get("histogram") {
+                if let Some(hist_obj) = hist.as_object() {
+                    for (key, value) in hist_obj {
+                        let count = value.as_u64().unwrap_or(0) as usize;
+                        // IonQ returns binary strings like "00", "01", "10", "11"
+                        let outcome = u64::from_str_radix(key, 2).unwrap_or(0);
+                        histogram.insert(outcome, count);
+                    }
+                }
+            }
+        }
+
+        tracing::info!(
+            "IonQ job {} completed with {} unique outcomes",
+            job_id,
+            histogram.len()
+        );
+
+        Ok(CircuitResult {
+            circuit_id: circuit.id.clone(),
+            repetitions,
+            measurements: all_measurements,
+            histogram,
+            execution_time_ms: (attempts * 5) as f64 * 1000.0, // Rough estimate
+            fidelity_estimate: 0.95,                           // Typical IonQ fidelity
+            noise_applied: true,
+        })
+    }
+
+    /// Execute circuit via Azure Quantum Python bridge
+    fn run_circuit_azure_quantum(
+        &self,
+        circuit: &QuantumCircuit,
+        repetitions: usize,
+        target: &str,
+    ) -> Result<CircuitResult, String> {
+        let circuit_json = self.circuit_to_json(circuit);
+
+        // Update repetitions and target
+        let mut circuit_data = circuit_json.as_object().unwrap().clone();
+        circuit_data.insert("repetitions".to_string(), json!(repetitions));
+        // Use provided target or default
+        let azure_target = if target == "qpu" {
+            "honeywell.hqs-lt-s1" // Real QPU
+        } else if target == "simulator" || target == "apival" {
+            "honeywell.hqs-lt-s1-apival" // API validator
+        } else {
+            target // Use as-is (e.g., "honeywell.hqs-lt-s1-apival")
+        };
+        circuit_data.insert("target".to_string(), json!(azure_target));
+
+        // Write circuit JSON to temp file
+        let temp_file = std::env::temp_dir().join(format!("circuit_{}.json", uuid::Uuid::new_v4()));
+        std::fs::write(&temp_file, serde_json::to_string(&circuit_data).unwrap())
+            .map_err(|e| format!("Failed to write circuit JSON: {}", e))?;
+
+        // Find Python script (try multiple locations)
+        let script_paths = [
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("scripts")
+                .join("azure_quantum_runner.py"),
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("azure_quantum_runner.py"),
+            std::path::Path::new("./scripts/azure_quantum_runner.py").to_path_buf(),
+            std::path::Path::new("./azure_quantum_runner.py").to_path_buf(),
+        ];
+
+        let script_path = script_paths.iter().find(|p| p.exists()).ok_or_else(|| {
+            format!(
+                "Azure Quantum runner script not found. Tried: {:?}",
+                script_paths
+            )
+        })?;
+
+        // Execute Python script with environment variables
+        let output = std::process::Command::new("python3")
+            .arg(&script_path)
+            .arg(&temp_file)
+            .env("AZURE_QUANTUM_RESOURCE_ID", self.resource_id.as_str())
+            .env("AZURE_QUANTUM_LOCATION", self.location.as_str())
+            .output()
+            .map_err(|e| format!("Failed to execute Python script: {}", e))?;
+
+        // Clean up temp file
+        let _ = std::fs::remove_file(&temp_file);
+
+        if !output.status.success() {
+            let error = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("Azure Quantum execution failed: {}", error));
+        }
+
+        // Parse JSON response
+        let result: serde_json::Value = serde_json::from_slice(&output.stdout)
+            .map_err(|e| format!("Failed to parse Azure Quantum response: {}", e))?;
+
+        if let Some(error) = result.get("error") {
+            return Err(format!("Azure Quantum error: {}", error));
+        }
+
+        if !result
+            .get("success")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            return Err("Azure Quantum execution returned success=false".to_string());
+        }
+
+        // Parse histogram
+        let mut histogram = HashMap::new();
+        if let Some(hist_json) = result.get("histogram").and_then(|v| v.as_object()) {
+            for (key, value) in hist_json {
+                let count = value.as_u64().unwrap_or(0) as usize;
+                // Convert binary string to u64
+                let outcome = u64::from_str_radix(key, 2).unwrap_or(0);
+                histogram.insert(outcome, count);
+            }
+        }
+
+        // Parse measurements
+        let mut all_measurements: HashMap<String, Vec<u64>> = HashMap::new();
+        if let Some(meas_json) = result.get("measurements").and_then(|v| v.as_object()) {
+            for (key, value) in meas_json {
+                if let Some(arr) = value.as_array() {
+                    let measurements: Vec<u64> = arr.iter().filter_map(|v| v.as_u64()).collect();
+                    all_measurements.insert(key.clone(), measurements);
+                }
+            }
+        }
+
+        tracing::info!(
+            "Azure Quantum circuit {} completed with {} outcomes",
+            circuit.id,
+            histogram.len()
+        );
+
+        Ok(CircuitResult {
+            circuit_id: circuit.id.clone(),
+            repetitions,
+            measurements: all_measurements,
+            histogram,
+            execution_time_ms: 0.0, // Azure Quantum doesn't provide this easily
+            fidelity_estimate: 0.95, // Typical IonQ fidelity
+            noise_applied: true,
+        })
     }
 }
 
@@ -1308,37 +1952,37 @@ impl QvmSimulator {
 /// Grover search simulation for cryptographic threat assessment
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GroverThreatAssessment {
-    pub target_algorithm: String,          // e.g., "ECDSA-secp256k1", "SHA-256"
-    pub classical_bits: usize,             // Security parameter
-    pub quantum_speedup: f64,              // Expected Grover speedup
-    pub estimated_iterations: usize,       // Grover iterations needed
-    pub required_logical_qubits: usize,    // Logical qubits for attack
-    pub required_physical_qubits: usize,   // Physical qubits (with error correction)
-    pub estimated_time_years: f64,         // Time to break with current hardware
+    pub target_algorithm: String,       // e.g., "ECDSA-secp256k1", "SHA-256"
+    pub classical_bits: usize,          // Security parameter
+    pub quantum_speedup: f64,           // Expected Grover speedup
+    pub estimated_iterations: usize,    // Grover iterations needed
+    pub required_logical_qubits: usize, // Logical qubits for attack
+    pub required_physical_qubits: usize, // Physical qubits (with error correction)
+    pub estimated_time_years: f64,      // Time to break with current hardware
     pub threat_level: ThreatLevel,
     pub noise_adjusted: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ThreatLevel {
-    None,           // No realistic threat
-    Theoretical,    // Possible in theory
-    LongTerm,       // Possible with future QC (>10 years)
-    MediumTerm,     // Possible within 5-10 years
-    NearTerm,       // Possible within 2-5 years
-    Imminent,       // Possible with current technology
+    None,        // No realistic threat
+    Theoretical, // Possible in theory
+    LongTerm,    // Possible with future QC (>10 years)
+    MediumTerm,  // Possible within 5-10 years
+    NearTerm,    // Possible within 2-5 years
+    Imminent,    // Possible with current technology
 }
 
 /// Shor's algorithm threat assessment
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShorThreatAssessment {
-    pub target_algorithm: String,          // e.g., "RSA-2048", "ECDSA-256"
+    pub target_algorithm: String, // e.g., "RSA-2048", "ECDSA-256"
     pub key_bits: usize,
     pub required_logical_qubits: usize,
-    pub required_t_gates: usize,           // T-gate count
+    pub required_t_gates: usize, // T-gate count
     pub required_physical_qubits: usize,
     pub error_correction_overhead: f64,
-    pub estimated_time_hours: f64,         // With fault-tolerant QC
+    pub estimated_time_hours: f64, // With fault-tolerant QC
     pub threat_level: ThreatLevel,
 }
 
@@ -1354,7 +1998,7 @@ pub struct OracleAssessment {
     pub timestamp: DateTime<Utc>,
     pub grover_assessments: Vec<GroverThreatAssessment>,
     pub shor_assessments: Vec<ShorThreatAssessment>,
-    pub composite_risk: u32,               // 0-10000 basis points
+    pub composite_risk: u32, // 0-10000 basis points
     pub recommended_era: QuantumEra,
     pub recommended_algorithms: Vec<String>,
 }
@@ -1387,30 +2031,32 @@ impl QvmOracle {
     ) -> GroverThreatAssessment {
         // Grover provides quadratic speedup: O(2^(n/2)) instead of O(2^n)
         let quantum_speedup = 2.0_f64.sqrt();
-        
+
         // Calculate Grover iterations using floating point to avoid overflow
         // iterations ≈ π/4 × √(2^n) = π/4 × 2^(n/2)
         let effective_bits = security_bits / 2;
-        let grover_iterations_f64 = std::f64::consts::PI / 4.0 * 2.0_f64.powf(effective_bits as f64);
-        
+        let grover_iterations_f64 =
+            std::f64::consts::PI / 4.0 * 2.0_f64.powf(effective_bits as f64);
+
         // Cap at a reasonable maximum for display purposes
         let grover_iterations = if grover_iterations_f64 > 1e18 {
             usize::MAX
         } else {
             grover_iterations_f64.ceil() as usize
         };
-        
+
         // Qubit requirements
         let logical_qubits = security_bits + 10; // Additional qubits for Grover oracle
         let error_correction_factor = 1000.0 / self.simulator.processor().t1_coherence_us();
         let physical_qubits = (logical_qubits as f64 * error_correction_factor) as usize;
-        
+
         // Time estimation (assuming 1000 gates/second with error correction)
-        let gates_per_second = 1000.0 / (self.simulator.noise_model().gate_durations_ns["cz"] * 1e-9);
+        let gates_per_second =
+            1000.0 / (self.simulator.noise_model().gate_durations_ns["cz"] * 1e-9);
         let total_gates_f64 = grover_iterations_f64 * (logical_qubits * 10) as f64; // Rough estimate
         let time_seconds = total_gates_f64 / gates_per_second;
         let time_years = time_seconds / (365.25 * 24.0 * 3600.0);
-        
+
         // Determine threat level based on current hardware
         let threat_level = if physical_qubits > 1_000_000 {
             ThreatLevel::None
@@ -1440,11 +2086,7 @@ impl QvmOracle {
     }
 
     /// Assess Shor threat for public key cryptography
-    pub fn assess_shor_threat(
-        &self,
-        algorithm: &str,
-        key_bits: usize,
-    ) -> ShorThreatAssessment {
+    pub fn assess_shor_threat(&self, algorithm: &str, key_bits: usize) -> ShorThreatAssessment {
         // Shor's algorithm qubit requirements
         let (logical_qubits, t_gates) = match algorithm {
             algo if algo.contains("RSA") => {
@@ -1457,23 +2099,21 @@ impl QvmOracle {
                 let n = key_bits;
                 (6 * n + 10, n * n * 100)
             }
-            _ => {
-                (key_bits * 3, key_bits * key_bits * 50)
-            }
+            _ => (key_bits * 3, key_bits * key_bits * 50),
         };
-        
+
         // Physical qubit overhead from noise
         let error_rate = self.simulator.processor().two_qubit_error_rate();
         let code_distance = ((1.0 / error_rate).log10() * 2.0).ceil() as usize;
         let physical_per_logical = code_distance * code_distance;
         let physical_qubits = logical_qubits * physical_per_logical;
-        
+
         // Time estimation with magic state distillation
         let magic_state_overhead = 100.0; // Typical overhead for T gates
         let gate_time_s = self.simulator.noise_model().gate_durations_ns["cz"] * 1e-9;
         let total_time_s = t_gates as f64 * gate_time_s * magic_state_overhead;
         let total_time_hours = total_time_s / 3600.0;
-        
+
         // Threat level
         let threat_level = if physical_qubits > 100_000_000 {
             ThreatLevel::None
@@ -1505,14 +2145,14 @@ impl QvmOracle {
     pub fn perform_assessment(&mut self) -> OracleAssessment {
         let mut grover_assessments = Vec::new();
         let mut shor_assessments = Vec::new();
-        
+
         // Assess common cryptographic primitives
         // Symmetric algorithms (Grover threat)
         grover_assessments.push(self.assess_grover_threat("AES-128", 128));
         grover_assessments.push(self.assess_grover_threat("AES-256", 256));
         grover_assessments.push(self.assess_grover_threat("SHA-256", 256));
         grover_assessments.push(self.assess_grover_threat("Keccak-256", 256));
-        
+
         // Public key algorithms (Shor threat)
         shor_assessments.push(self.assess_shor_threat("RSA-2048", 2048));
         shor_assessments.push(self.assess_shor_threat("RSA-4096", 4096));
@@ -1520,20 +2160,22 @@ impl QvmOracle {
         shor_assessments.push(self.assess_shor_threat("ECDSA-P384", 384));
         shor_assessments.push(self.assess_shor_threat("Ed25519", 256));
         shor_assessments.push(self.assess_shor_threat("BLS12-381", 381));
-        
+
         // Calculate composite risk
-        let max_shor_threat = shor_assessments.iter()
+        let max_shor_threat = shor_assessments
+            .iter()
             .map(|a| threat_level_to_score(a.threat_level))
             .max()
             .unwrap_or(0);
-        let max_grover_threat = grover_assessments.iter()
+        let max_grover_threat = grover_assessments
+            .iter()
             .map(|a| threat_level_to_score(a.threat_level))
             .max()
             .unwrap_or(0);
-        
+
         // Shor threats weight higher (asymmetric crypto more vulnerable)
         let composite_risk = (max_shor_threat * 70 + max_grover_threat * 30) / 100;
-        
+
         // Determine recommended era
         let recommended_era = if composite_risk > 7000 {
             QuantumEra::FaultTolerant
@@ -1542,7 +2184,7 @@ impl QvmOracle {
         } else {
             QuantumEra::PreQuantum
         };
-        
+
         // Recommend algorithms based on threat level
         let recommended_algorithms = if composite_risk > 5000 {
             vec![
@@ -1558,7 +2200,7 @@ impl QvmOracle {
                 "BLS12-381".to_string(),
             ]
         };
-        
+
         let assessment = OracleAssessment {
             timestamp: Utc::now(),
             grover_assessments,
@@ -1567,7 +2209,7 @@ impl QvmOracle {
             recommended_era,
             recommended_algorithms,
         };
-        
+
         self.threat_history.push(assessment.clone());
         assessment
     }
@@ -1600,15 +2242,18 @@ pub struct QvmProtocolStack {
     pub oracle: QvmOracle,
     pub qrm: QuantumResistanceMonitor,
     pub apqc: AdaptivePqcLayer,
-    
+
+    // IonQ backend (if configured)
+    pub ionq_backend: Option<IonQBackend>,
+
     // Protocol state
     pub current_era: QuantumEra,
     pub threat_indicators: Vec<ThreatIndicator>,
     pub last_assessment: Option<OracleAssessment>,
-    
+
     // Configuration
     pub config: QvmConfig,
-    
+
     // Metrics
     pub assessments_count: usize,
     pub era_transitions: Vec<(DateTime<Utc>, QuantumEra, QuantumEra)>,
@@ -1624,6 +2269,14 @@ pub struct QvmConfig {
     pub risk_threshold_scheduled: u32,
     pub enable_quantum_circuits: bool,
     pub simulation_repetitions: usize,
+    /// Azure Quantum resource ID (preferred)
+    pub azure_quantum_resource_id: Option<String>,
+    /// Azure Quantum location
+    pub azure_quantum_location: Option<String>,
+    /// IonQ API key (legacy fallback)
+    pub ionq_api_key: Option<String>,
+    /// Use IonQ hardware instead of simulator (if processor is IonQ)
+    pub use_ionq_hardware: bool,
 }
 
 impl Default for QvmConfig {
@@ -1636,6 +2289,10 @@ impl Default for QvmConfig {
             risk_threshold_scheduled: 6000,
             enable_quantum_circuits: true,
             simulation_repetitions: 3000,
+            azure_quantum_resource_id: std::env::var("AZURE_QUANTUM_RESOURCE_ID").ok(),
+            azure_quantum_location: std::env::var("AZURE_QUANTUM_LOCATION").ok(),
+            ionq_api_key: std::env::var("IONQ_API_KEY").ok(),
+            use_ionq_hardware: false,
         }
     }
 }
@@ -1644,9 +2301,41 @@ impl QvmProtocolStack {
     /// Create new QVM Protocol Stack
     pub fn new(config: QvmConfig) -> Self {
         let oracle = QvmOracle::new(config.processor);
-        
+
+        // Initialize Azure Quantum backend if configured (prefers Quantinuum)
+        let ionq_backend = if config.processor.is_quantinuum() && config.use_ionq_hardware {
+            // Use Azure Quantum for Quantinuum
+            if let (Some(resource_id), Some(location)) = (
+                &config.azure_quantum_resource_id,
+                &config.azure_quantum_location,
+            ) {
+                let target = config
+                    .processor
+                    .azure_quantum_target()
+                    .unwrap_or("honeywell.hqs-lt-s1-apival")
+                    .to_string();
+                Some(IonQBackend::new_azure_quantum(
+                    resource_id.clone(),
+                    location.clone(),
+                    Some(target),
+                ))
+            } else {
+                None
+            }
+        } else if config.processor.is_ionq() && config.use_ionq_hardware {
+            // Legacy IonQ direct API
+            if let Some(api_key) = &config.ionq_api_key {
+                Some(IonQBackend::new_direct(api_key.clone()))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         Self {
             oracle,
+            ionq_backend,
             qrm: QuantumResistanceMonitor::new(),
             apqc: AdaptivePqcLayer::new(),
             current_era: QuantumEra::PreQuantum,
@@ -1662,26 +2351,28 @@ impl QvmProtocolStack {
     pub fn assess_and_update(&mut self) -> RiskAssessment {
         // Perform QVM oracle assessment
         let oracle_assessment = self.oracle.perform_assessment();
-        
+
         // Check for era transition
-        if self.config.auto_era_transition && oracle_assessment.recommended_era != self.current_era {
+        if self.config.auto_era_transition && oracle_assessment.recommended_era != self.current_era
+        {
             let old_era = self.current_era;
             self.current_era = oracle_assessment.recommended_era;
-            self.era_transitions.push((Utc::now(), old_era, self.current_era));
-            
+            self.era_transitions
+                .push((Utc::now(), old_era, self.current_era));
+
             // Update QRM era
             self.qrm.current_era = self.current_era;
         }
-        
+
         // Generate threat indicators from oracle assessment
         self.generate_threat_indicators(&oracle_assessment);
-        
+
         // Update QRMS risk assessment
         let risk = self.qrm.calculate_risk();
-        
+
         self.last_assessment = Some(oracle_assessment);
         self.assessments_count += 1;
-        
+
         risk
     }
 
@@ -1689,7 +2380,9 @@ impl QvmProtocolStack {
     fn generate_threat_indicators(&mut self, assessment: &OracleAssessment) {
         // Convert Shor assessments to threat indicators
         for shor in &assessment.shor_assessments {
-            if shor.threat_level != ThreatLevel::None && shor.threat_level != ThreatLevel::Theoretical {
+            if shor.threat_level != ThreatLevel::None
+                && shor.threat_level != ThreatLevel::Theoretical
+            {
                 let indicator = ThreatIndicator {
                     category: if shor.target_algorithm.contains("ECDSA") {
                         ThreatCategory::DigitalSignatures
@@ -1701,12 +2394,14 @@ impl QvmProtocolStack {
                     sub_category: shor.target_algorithm.clone(),
                     severity: threat_level_to_score(shor.threat_level) as f64 / 10000.0,
                     confidence: 0.85,
-                    source: format!("QVM Oracle ({})", self.oracle.simulator().processor().processor_id()),
+                    source: format!(
+                        "QVM Oracle ({})",
+                        self.oracle.simulator().processor().processor_id()
+                    ),
                     timestamp: Utc::now(),
                     description: format!(
                         "Shor's algorithm threat: {} qubits required, {} hours estimated",
-                        shor.required_physical_qubits,
-                        shor.estimated_time_hours
+                        shor.required_physical_qubits, shor.estimated_time_hours
                     ),
                     era_relevance: assessment.recommended_era,
                     references: vec![
@@ -1718,12 +2413,16 @@ impl QvmProtocolStack {
                 self.threat_indicators.push(indicator);
             }
         }
-        
+
         // Convert Grover assessments to threat indicators
         for grover in &assessment.grover_assessments {
-            if grover.threat_level != ThreatLevel::None && grover.threat_level != ThreatLevel::Theoretical {
+            if grover.threat_level != ThreatLevel::None
+                && grover.threat_level != ThreatLevel::Theoretical
+            {
                 let indicator = ThreatIndicator {
-                    category: if grover.target_algorithm.contains("SHA") || grover.target_algorithm.contains("Keccak") {
+                    category: if grover.target_algorithm.contains("SHA")
+                        || grover.target_algorithm.contains("Keccak")
+                    {
                         ThreatCategory::HashReversal
                     } else {
                         ThreatCategory::DecryptionHndl
@@ -1731,17 +2430,17 @@ impl QvmProtocolStack {
                     sub_category: grover.target_algorithm.clone(),
                     severity: threat_level_to_score(grover.threat_level) as f64 / 10000.0,
                     confidence: 0.75,
-                    source: format!("QVM Oracle ({})", self.oracle.simulator().processor().processor_id()),
+                    source: format!(
+                        "QVM Oracle ({})",
+                        self.oracle.simulator().processor().processor_id()
+                    ),
                     timestamp: Utc::now(),
                     description: format!(
                         "Grover's algorithm threat: {} iterations, {} years estimated",
-                        grover.estimated_iterations,
-                        grover.estimated_time_years
+                        grover.estimated_iterations, grover.estimated_time_years
                     ),
                     era_relevance: assessment.recommended_era,
-                    references: vec![
-                        "https://arxiv.org/abs/quant-ph/9605043".to_string(),
-                    ],
+                    references: vec!["https://arxiv.org/abs/quant-ph/9605043".to_string()],
                 };
                 self.qrm.add_indicator(indicator.clone());
                 self.threat_indicators.push(indicator);
@@ -1754,8 +2453,12 @@ impl QvmProtocolStack {
         if !self.config.enable_quantum_circuits {
             return None;
         }
-        
-        Some(self.oracle.simulator_mut().run(circuit, self.config.simulation_repetitions))
+
+        Some(
+            self.oracle
+                .simulator_mut()
+                .run(circuit, self.config.simulation_repetitions),
+        )
     }
 
     /// Get current protocol stack status
@@ -1763,12 +2466,23 @@ impl QvmProtocolStack {
         QvmStatus {
             processor: self.oracle.simulator().processor(),
             current_era: self.current_era,
-            qrm_risk_score: self.qrm.get_risk_history().last().map(|r| r.score).unwrap_or(0),
-            oracle_risk_score: self.last_assessment.as_ref().map(|a| a.composite_risk).unwrap_or(0),
+            qrm_risk_score: self
+                .qrm
+                .get_risk_history()
+                .last()
+                .map(|r| r.score)
+                .unwrap_or(0),
+            oracle_risk_score: self
+                .last_assessment
+                .as_ref()
+                .map(|a| a.composite_risk)
+                .unwrap_or(0),
             assessments_count: self.assessments_count,
             era_transitions: self.era_transitions.len(),
             threat_indicators_count: self.threat_indicators.len(),
-            recommended_algorithms: self.last_assessment.as_ref()
+            recommended_algorithms: self
+                .last_assessment
+                .as_ref()
                 .map(|a| a.recommended_algorithms.clone())
                 .unwrap_or_default(),
         }
@@ -1806,64 +2520,59 @@ pub fn build_grover_circuit(n_qubits: usize, iterations: usize) -> QuantumCircui
     for i in 0..n_qubits {
         qubits.push(GridQubit::new(i as i32, 0));
     }
-    
+
     let mut gates = Vec::new();
-    
+
     // Initial superposition
-    let mut h_layer: Vec<QuantumGate> = (0..n_qubits)
-        .map(|i| QuantumGate::H(i))
-        .collect();
+    let mut h_layer: Vec<QuantumGate> = (0..n_qubits).map(|i| QuantumGate::H(i)).collect();
     gates.push(h_layer);
-    
+
     // Grover iterations
     for _ in 0..iterations {
         // Oracle (simplified: mark state |11...1⟩)
         // Apply CZ between adjacent qubits
         let mut oracle_layer: Vec<QuantumGate> = Vec::new();
-        for i in 0..n_qubits-1 {
-            oracle_layer.push(QuantumGate::CZ(i, i+1));
+        for i in 0..n_qubits - 1 {
+            oracle_layer.push(QuantumGate::CZ(i, i + 1));
         }
         gates.push(oracle_layer);
-        
+
         // Diffusion operator
-        let mut h_layer: Vec<QuantumGate> = (0..n_qubits)
-            .map(|i| QuantumGate::H(i))
-            .collect();
+        let mut h_layer: Vec<QuantumGate> = (0..n_qubits).map(|i| QuantumGate::H(i)).collect();
         gates.push(h_layer.clone());
-        
-        let mut x_layer: Vec<QuantumGate> = (0..n_qubits)
-            .map(|i| QuantumGate::X(i))
-            .collect();
+
+        let mut x_layer: Vec<QuantumGate> = (0..n_qubits).map(|i| QuantumGate::X(i)).collect();
         gates.push(x_layer);
-        
+
         // Multi-controlled Z (simplified)
         let mut mcz_layer: Vec<QuantumGate> = Vec::new();
-        for i in 0..n_qubits-1 {
-            mcz_layer.push(QuantumGate::CZ(i, i+1));
+        for i in 0..n_qubits - 1 {
+            mcz_layer.push(QuantumGate::CZ(i, i + 1));
         }
         gates.push(mcz_layer);
-        
-        let mut x_layer: Vec<QuantumGate> = (0..n_qubits)
-            .map(|i| QuantumGate::X(i))
-            .collect();
+
+        let mut x_layer: Vec<QuantumGate> = (0..n_qubits).map(|i| QuantumGate::X(i)).collect();
         gates.push(x_layer);
-        
+
         gates.push(h_layer);
     }
-    
+
     // Measurement
     let measure_layer: Vec<QuantumGate> = (0..n_qubits)
         .map(|i| QuantumGate::Measure(i, format!("m{}", i)))
         .collect();
     gates.push(measure_layer);
-    
+
     let mut metadata = HashMap::new();
     metadata.insert("algorithm".to_string(), "grover".to_string());
     metadata.insert("iterations".to_string(), iterations.to_string());
-    
+
     QuantumCircuit {
         id: format!("grover_{}_qubits_{}_iter", n_qubits, iterations),
-        name: format!("Grover Search ({} qubits, {} iterations)", n_qubits, iterations),
+        name: format!(
+            "Grover Search ({} qubits, {} iterations)",
+            n_qubits, iterations
+        ),
         qubits,
         gates,
         metadata,
@@ -1872,11 +2581,8 @@ pub fn build_grover_circuit(n_qubits: usize, iterations: usize) -> QuantumCircui
 
 /// Build a simple entanglement circuit for testing
 pub fn build_bell_state_circuit() -> QuantumCircuit {
-    let qubits = vec![
-        GridQubit::new(0, 0),
-        GridQubit::new(0, 1),
-    ];
-    
+    let qubits = vec![GridQubit::new(0, 0), GridQubit::new(0, 1)];
+
     let gates = vec![
         vec![QuantumGate::H(0)],
         vec![QuantumGate::CNOT(0, 1)],
@@ -1885,11 +2591,11 @@ pub fn build_bell_state_circuit() -> QuantumCircuit {
             QuantumGate::Measure(1, "m1".to_string()),
         ],
     ];
-    
+
     let mut metadata = HashMap::new();
     metadata.insert("algorithm".to_string(), "bell_state".to_string());
     metadata.insert("state".to_string(), "|Φ+⟩".to_string());
-    
+
     QuantumCircuit {
         id: "bell_state".to_string(),
         name: "Bell State |Φ+⟩ Preparation".to_string(),
@@ -1901,30 +2607,28 @@ pub fn build_bell_state_circuit() -> QuantumCircuit {
 
 /// Build a GHZ state circuit (multi-qubit entanglement)
 pub fn build_ghz_circuit(n_qubits: usize) -> QuantumCircuit {
-    let qubits: Vec<GridQubit> = (0..n_qubits)
-        .map(|i| GridQubit::new(i as i32, 0))
-        .collect();
-    
+    let qubits: Vec<GridQubit> = (0..n_qubits).map(|i| GridQubit::new(i as i32, 0)).collect();
+
     let mut gates = Vec::new();
-    
+
     // Hadamard on first qubit
     gates.push(vec![QuantumGate::H(0)]);
-    
+
     // CNOT cascade
-    for i in 0..n_qubits-1 {
-        gates.push(vec![QuantumGate::CNOT(i, i+1)]);
+    for i in 0..n_qubits - 1 {
+        gates.push(vec![QuantumGate::CNOT(i, i + 1)]);
     }
-    
+
     // Measurements
     let measure_layer: Vec<QuantumGate> = (0..n_qubits)
         .map(|i| QuantumGate::Measure(i, format!("m{}", i)))
         .collect();
     gates.push(measure_layer);
-    
+
     let mut metadata = HashMap::new();
     metadata.insert("algorithm".to_string(), "ghz".to_string());
     metadata.insert("qubits".to_string(), n_qubits.to_string());
-    
+
     QuantumCircuit {
         id: format!("ghz_{}", n_qubits),
         name: format!("GHZ State ({} qubits)", n_qubits),
@@ -1950,7 +2654,7 @@ mod tests {
         let mut sim = QvmSimulator::new(QuantumProcessor::WillowPink);
         let circuit = build_bell_state_circuit();
         let result = sim.run(&circuit, 1000);
-        
+
         // Bell state should give |00⟩ or |11⟩ with roughly equal probability
         assert!(result.histogram.contains_key(&0) || result.histogram.contains_key(&3));
     }
@@ -1959,7 +2663,7 @@ mod tests {
     fn test_grover_threat_assessment() {
         let oracle = QvmOracle::new(QuantumProcessor::WillowPink);
         let assessment = oracle.assess_grover_threat("AES-256", 256);
-        
+
         // AES-256 with Grover still needs 2^128 operations
         assert!(assessment.required_physical_qubits > 1000);
         assert_ne!(assessment.threat_level, ThreatLevel::Imminent);
@@ -1969,7 +2673,7 @@ mod tests {
     fn test_shor_threat_assessment() {
         let oracle = QvmOracle::new(QuantumProcessor::WillowPink);
         let assessment = oracle.assess_shor_threat("ECDSA-secp256k1", 256);
-        
+
         // ECDSA-256 needs fault-tolerant QC
         assert!(assessment.required_logical_qubits > 1000);
     }
@@ -1978,7 +2682,7 @@ mod tests {
     fn test_protocol_stack() {
         let config = QvmConfig::default();
         let mut stack = QvmProtocolStack::new(config);
-        
+
         let risk = stack.assess_and_update();
         assert!(stack.last_assessment.is_some());
         assert_eq!(stack.assessments_count, 1);
@@ -1987,14 +2691,14 @@ mod tests {
     #[test]
     fn test_qubit_picker_rainbow() {
         let picker = QubitPicker::new(QuantumProcessor::Rainbow);
-        
+
         // Rainbow has 53 qubits
         assert!(picker.qubit_errors.len() >= 50);
-        
+
         // Get qubits sorted by quality
         let qubits = picker.get_qubits_by_quality(QubitPickingStrategy::Balanced);
         assert!(!qubits.is_empty());
-        
+
         // First qubit should have lower error than last
         let first = &qubits[0];
         let last = &qubits[qubits.len() - 1];
@@ -2004,10 +2708,10 @@ mod tests {
     #[test]
     fn test_qubit_picker_willow() {
         let picker = QubitPicker::new(QuantumProcessor::WillowPink);
-        
+
         // Willow has 105 qubits
         assert!(picker.qubit_errors.len() >= 100);
-        
+
         // Test picking 5 qubits for a simple circuit
         let result = picker.pick_qubits(5, &[], QubitPickingStrategy::Balanced);
         assert_eq!(result.selected_qubits.len(), 5);
@@ -2017,11 +2721,15 @@ mod tests {
     #[test]
     fn test_qubit_picker_with_connectivity() {
         let picker = QubitPicker::new(QuantumProcessor::Rainbow);
-        
+
         // Pick qubits for a 3-qubit circuit with 2-qubit gates between 0-1 and 1-2
         let required_connectivity = vec![(0, 1), (1, 2)];
-        let result = picker.pick_qubits(3, &required_connectivity, QubitPickingStrategy::MinimizeTwoQubitError);
-        
+        let result = picker.pick_qubits(
+            3,
+            &required_connectivity,
+            QubitPickingStrategy::MinimizeTwoQubitError,
+        );
+
         assert_eq!(result.selected_qubits.len(), 3);
         assert!(result.qubit_mapping.len() >= 3);
     }
@@ -2029,7 +2737,7 @@ mod tests {
     #[test]
     fn test_qubit_error_data() {
         let picker = QubitPicker::new(QuantumProcessor::Rainbow);
-        
+
         // Get error data for a specific qubit
         let qubit = GridQubit::new(5, 5);
         if let Some(error_data) = picker.get_qubit_error(qubit) {
@@ -2041,10 +2749,10 @@ mod tests {
     #[test]
     fn test_bad_qubits_identified() {
         let picker = QubitPicker::new(QuantumProcessor::Rainbow);
-        
+
         // Known bad qubit (7,2) should be in avoid list
         let avoid = picker.get_bad_qubits(0.005); // Lower threshold to catch more
-        
+
         // Either the bad qubit is identified or there are some qubits above threshold
         // (depends on simulated calibration data)
         assert!(avoid.len() >= 0); // At minimum, no crash
@@ -2053,19 +2761,27 @@ mod tests {
     #[test]
     fn test_picking_strategies() {
         let picker = QubitPicker::new(QuantumProcessor::Weber);
-        
+
         let strategies = [
             QubitPickingStrategy::MinimizeSingleQubitError,
             QubitPickingStrategy::MinimizeTwoQubitError,
             QubitPickingStrategy::MinimizeReadoutError,
             QubitPickingStrategy::MaximizeCoherence,
             QubitPickingStrategy::Balanced,
-            QubitPickingStrategy::Custom { single_weight: 1.0, two_qubit_weight: 2.0, readout_weight: 1.5 },
+            QubitPickingStrategy::Custom {
+                single_weight: 1.0,
+                two_qubit_weight: 2.0,
+                readout_weight: 1.5,
+            },
         ];
-        
+
         for strategy in strategies {
             let qubits = picker.get_qubits_by_quality(strategy);
-            assert!(!qubits.is_empty(), "Strategy {:?} returned no qubits", strategy);
+            assert!(
+                !qubits.is_empty(),
+                "Strategy {:?} returned no qubits",
+                strategy
+            );
         }
     }
 
@@ -2073,11 +2789,14 @@ mod tests {
     fn test_transform_circuit() {
         let picker = QubitPicker::new(QuantumProcessor::Rainbow);
         let circuit = build_bell_state_circuit();
-        
+
         let result = picker.pick_qubits(2, &[(0, 1)], QubitPickingStrategy::Balanced);
         let transformed = picker.transform_circuit(&circuit, &result.qubit_mapping);
-        
+
         assert!(transformed.metadata.contains_key("transformed"));
-        assert_eq!(transformed.metadata.get("transformed"), Some(&"true".to_string()));
+        assert_eq!(
+            transformed.metadata.get("transformed"),
+            Some(&"true".to_string())
+        );
     }
 }

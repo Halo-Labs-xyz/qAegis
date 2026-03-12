@@ -7,6 +7,8 @@ This directory contains all project documentation.
 - `architecture/` - System architecture and design documents
 - `deployment/` - Deployment guides and procedures
 - `api/` - API documentation
+- `TRAINING_AND_EVAL_RUNBOOK.md` - Hybrid policy training and benchmark workflow
+- `CONCURRENT_VALIDATION_LOG.md` - Ongoing validation ledger
 
 ## Building Documentation
 

@@ -31,6 +31,7 @@ QuantumAegis is a quantum-resistant blockchain protocol that combines:
 | Phase 3: TEE | Complete | [aegis_tee.md](./aegis_tee.md), [phala_integration.md](./phala_integration.md) |
 | Phase 4: Threat Intelligence | Simulated | [phase4_threat_intelligence.md](./phase4_threat_intelligence.md) |
 | Phase 5: QVM Integration | Complete | [qvm_integration.md](./qvm_integration.md) |
+| Phase 6: Quantum Co-Processing | **Planned** | [QUANTUM_COPROCESSING_PRD.md](./QUANTUM_COPROCESSING_PRD.md) |
 
 ## QVM Oracle Layer
 
@@ -62,6 +63,7 @@ QuantumAegis is a quantum-resistant blockchain protocol that combines:
 - [Quantum Resistance Model](./quantum_resistance_model.md) - QRM architecture
 - [Threat Taxonomy](./threat_taxonomy.md) - 12-category threat framework
 - [Post-Quantum Cryptography](./post_quantum_cryptography.md) - PQC algorithm details
+- [Quantum Co-Processing PRD](./QUANTUM_COPROCESSING_PRD.md) - **NEW**: Quantum co-processing architecture upgrade with Lean Ethereum integration
 
 ## System Architecture
 

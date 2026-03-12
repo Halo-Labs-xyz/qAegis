@@ -13,11 +13,11 @@
 //! Phala Network integration is available as a redundancy/fallback mechanism
 //! for enhanced reliability and distributed security.
 
-use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
-use hex;
 use chrono::{DateTime, Utc};
-use std::collections::{VecDeque, HashMap};
+use hex;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::collections::{HashMap, VecDeque};
 
 use crate::apqc::AdaptivePqcLayer;
 use crate::qrm::{QuantumResistanceMonitor, RiskAssessment};
@@ -27,13 +27,13 @@ use crate::qrm::{QuantumResistanceMonitor, RiskAssessment};
 pub struct AegisTeeAttestation {
     pub worker_id: String,
     pub enclave_id: String,
-    pub quote: Vec<u8>,              // TEE quote bytes
-    pub quote_type: String,           // "TDX", "SEV", or "SGX"
-    pub mr_enclave: String,           // Measurement of enclave code
-    pub mr_signer: String,            // Measurement of signer
-    pub report_data: Vec<u8>,         // Custom report data (batch hash)
+    pub quote: Vec<u8>,       // TEE quote bytes
+    pub quote_type: String,   // "TDX", "SEV", or "SGX"
+    pub mr_enclave: String,   // Measurement of enclave code
+    pub mr_signer: String,    // Measurement of signer
+    pub report_data: Vec<u8>, // Custom report data (batch hash)
     pub timestamp: DateTime<Utc>,
-    pub aegis_verification: bool,      // Verified by Aegis-TEE infrastructure
+    pub aegis_verification: bool, // Verified by Aegis-TEE infrastructure
     pub phala_redundancy: Option<PhalaRedundancyAttestation>, // Optional Phala redundancy
 }
 
@@ -53,9 +53,9 @@ pub struct PhalaRedundancyAttestation {
 pub struct AssetProtection {
     pub asset_id: String,
     pub asset_type: AssetType,
-    pub chain_id: Option<u64>,        // None for off-chain
+    pub chain_id: Option<u64>, // None for off-chain
     pub contract_address: Option<String>,
-    pub encryption_key: Vec<u8>,      // Encrypted with TEE key
+    pub encryption_key: Vec<u8>, // Encrypted with TEE key
     pub access_policy: AccessPolicy,
     pub migration_state: MigrationState,
 }
@@ -76,28 +76,28 @@ pub struct AccessPolicy {
     pub allowed_operations: Vec<String>,
     pub requires_pqc: bool,
     pub requires_tee: bool,
-    pub risk_threshold: u32,           // Minimum risk score to trigger protection
+    pub risk_threshold: u32, // Minimum risk score to trigger protection
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum MigrationState {
-    Active,                            // Currently active
-    Preparing,                         // Preparing for migration
-    Migrating,                         // Migration in progress
-    Migrated,                          // Successfully migrated
-    Rollback,                          // Rolled back to previous state
+    Active,    // Currently active
+    Preparing, // Preparing for migration
+    Migrating, // Migration in progress
+    Migrated,  // Successfully migrated
+    Rollback,  // Rolled back to previous state
 }
 
 /// Encrypted transaction with asset context
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncryptedTransaction {
     pub tx_id: String,
-    pub encrypted_data: Vec<u8>,       // Encrypted with TEE key
-    pub asset_refs: Vec<String>,       // Referenced asset IDs
+    pub encrypted_data: Vec<u8>, // Encrypted with TEE key
+    pub asset_refs: Vec<String>, // Referenced asset IDs
     pub priority_fee: u64,
     pub timestamp: DateTime<Utc>,
-    pub risk_level: u32,               // Current QRM risk score
-    pub requires_migration: bool,      // Flag for migration-aware ordering
+    pub risk_level: u32,          // Current QRM risk score
+    pub requires_migration: bool, // Flag for migration-aware ordering
 }
 
 /// Migration checkpoint for state preservation
@@ -108,13 +108,13 @@ pub struct MigrationCheckpoint {
     pub state_hash: String,
     pub asset_snapshots: Vec<AssetSnapshot>,
     pub timestamp: DateTime<Utc>,
-    pub pqc_signature: String,         // ML-DSA signature
+    pub pqc_signature: String, // ML-DSA signature
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssetSnapshot {
     pub asset_id: String,
-    pub state: Vec<u8>,                // Encrypted state
+    pub state: Vec<u8>, // Encrypted state
     pub metadata: HashMap<String, String>,
 }
 
@@ -146,44 +146,44 @@ pub struct DecryptedTransaction {
 /// Intelligence-based ordering strategy
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum IntelligenceOrdering {
-    RiskAware,                         // Order by risk level (high risk first)
-    AssetProtection,                   // Prioritize protected assets
-    MigrationAware,                    // Group migration-related txs
-    Hybrid,                            // Combine multiple strategies
+    RiskAware,       // Order by risk level (high risk first)
+    AssetProtection, // Prioritize protected assets
+    MigrationAware,  // Group migration-related txs
+    Hybrid,          // Combine multiple strategies
 }
 
 /// Aegis-TEE Sequencer (Primary TEE Implementation)
-/// 
+///
 /// This is the primary TEE sequencer for QuantumAegis. It provides secure
 /// transaction ordering within a trusted execution environment.
-/// 
+///
 /// Phala Network integration is available as an optional redundancy layer
 /// for enhanced reliability and distributed security.
 pub struct AegisTeeSequencer {
     // Encrypted mempool (only decrypted inside TEE)
     encrypted_mempool: VecDeque<EncryptedTransaction>,
-    
+
     // Asset registry
     asset_registry: HashMap<String, AssetProtection>,
-    
+
     // Migration state
     migration_state: Option<MigrationCheckpoint>,
     migration_in_progress: bool,
-    
+
     // Intelligence components
     qrm: QuantumResistanceMonitor,
     intelligence_mode: IntelligenceOrdering,
-    
+
     // Batch management
     batches: Vec<QuantumResistantBatch>,
     current_block: u64,
     batch_size: usize,
-    
+
     // Aegis-TEE specific
     worker_id: String,
     enclave_id: String,
-    tee_platform: String,              // "TDX", "SEV", or "SGX"
-    
+    tee_platform: String, // "TDX", "SEV", or "SGX"
+
     // Phala redundancy configuration
     phala_redundancy_enabled: bool,
     phala_worker_id: Option<String>,
@@ -192,7 +192,7 @@ pub struct AegisTeeSequencer {
 
 impl AegisTeeSequencer {
     /// Initialize Aegis-TEE sequencer
-    /// 
+    ///
     /// # Arguments
     /// * `worker_id` - Aegis-TEE worker identifier
     /// * `enclave_id` - Aegis-TEE enclave identifier
@@ -242,7 +242,7 @@ impl AegisTeeSequencer {
     /// This function simulates TEE operation - in production, runs inside Aegis-TEE enclave
     pub fn decrypt_and_order_intelligent(
         &mut self,
-        tee_key: &[u8],  // TEE-protected decryption key
+        tee_key: &[u8], // TEE-protected decryption key
     ) -> Vec<DecryptedTransaction> {
         if self.encrypted_mempool.is_empty() {
             return vec![];
@@ -250,7 +250,7 @@ impl AegisTeeSequencer {
 
         // Decrypt transactions (simulated - real implementation uses TEE key)
         let mut decrypted: Vec<(DecryptedTransaction, u32, Vec<String>)> = Vec::new();
-        
+
         for enc_tx in self.encrypted_mempool.iter() {
             // In real TEE: decrypt with tee_key
             // For now, simulate decryption
@@ -262,12 +262,8 @@ impl AegisTeeSequencer {
                 priority_fee: enc_tx.priority_fee,
                 timestamp: enc_tx.timestamp,
             };
-            
-            decrypted.push((
-                decrypted_tx,
-                enc_tx.risk_level,
-                enc_tx.asset_refs.clone(),
-            ));
+
+            decrypted.push((decrypted_tx, enc_tx.risk_level, enc_tx.asset_refs.clone()));
         }
 
         // Clear processed transactions
@@ -275,18 +271,10 @@ impl AegisTeeSequencer {
 
         // Intelligence-based ordering
         let ordered = match self.intelligence_mode {
-            IntelligenceOrdering::RiskAware => {
-                self.order_by_risk(decrypted)
-            }
-            IntelligenceOrdering::AssetProtection => {
-                self.order_by_asset_protection(decrypted)
-            }
-            IntelligenceOrdering::MigrationAware => {
-                self.order_by_migration(decrypted)
-            }
-            IntelligenceOrdering::Hybrid => {
-                self.order_hybrid(decrypted)
-            }
+            IntelligenceOrdering::RiskAware => self.order_by_risk(decrypted),
+            IntelligenceOrdering::AssetProtection => self.order_by_asset_protection(decrypted),
+            IntelligenceOrdering::MigrationAware => self.order_by_migration(decrypted),
+            IntelligenceOrdering::Hybrid => self.order_hybrid(decrypted),
         };
 
         ordered.into_iter().take(self.batch_size).collect()
@@ -307,11 +295,13 @@ impl AegisTeeSequencer {
         mut txs: Vec<(DecryptedTransaction, u32, Vec<String>)>,
     ) -> Vec<DecryptedTransaction> {
         txs.sort_by(|a, b| {
-            let a_protected = a.2.iter()
-                .any(|asset_id| self.asset_registry.contains_key(asset_id));
-            let b_protected = b.2.iter()
-                .any(|asset_id| self.asset_registry.contains_key(asset_id));
-            
+            let a_protected =
+                a.2.iter()
+                    .any(|asset_id| self.asset_registry.contains_key(asset_id));
+            let b_protected =
+                b.2.iter()
+                    .any(|asset_id| self.asset_registry.contains_key(asset_id));
+
             match (a_protected, b_protected) {
                 (true, false) => std::cmp::Ordering::Less,
                 (false, true) => std::cmp::Ordering::Greater,
@@ -331,7 +321,7 @@ impl AegisTeeSequencer {
             txs.sort_by(|a, b| {
                 let a_migration = a.0.tx_id.contains("migration");
                 let b_migration = b.0.tx_id.contains("migration");
-                
+
                 match (a_migration, b_migration) {
                     (true, false) => std::cmp::Ordering::Less,
                     (false, true) => std::cmp::Ordering::Greater,
@@ -366,7 +356,7 @@ impl AegisTeeSequencer {
         asset_refs: &[String],
     ) -> u64 {
         let mut score = risk as u64 * 100;
-        
+
         // Asset protection bonus
         for asset_id in asset_refs {
             if let Some(asset) = self.asset_registry.get(asset_id) {
@@ -378,15 +368,15 @@ impl AegisTeeSequencer {
                 }
             }
         }
-        
+
         // Migration bonus
         if self.migration_in_progress && tx.tx_id.contains("migration") {
             score += 5000;
         }
-        
+
         // Priority fee bonus
         score += tx.priority_fee as u64;
-        
+
         score
     }
 
@@ -398,10 +388,10 @@ impl AegisTeeSequencer {
     ) -> Option<QuantumResistantBatch> {
         // Get current risk assessment
         let risk = self.qrm.calculate_risk();
-        
+
         // Decrypt and order transactions
         let ordered_txs = self.decrypt_and_order_intelligent(tee_key);
-        
+
         if ordered_txs.is_empty() {
             return None;
         }
@@ -411,7 +401,10 @@ impl AegisTeeSequencer {
         for tx in &ordered_txs {
             for asset_id in &tx.asset_refs {
                 if let Some(asset) = self.asset_registry.get(asset_id) {
-                    if !batch_assets.iter().any(|a: &AssetProtection| a.asset_id == asset.asset_id) {
+                    if !batch_assets
+                        .iter()
+                        .any(|a: &AssetProtection| a.asset_id == asset.asset_id)
+                    {
                         batch_assets.push(asset.clone());
                     }
                 }
@@ -420,7 +413,7 @@ impl AegisTeeSequencer {
 
         // Create batch data
         let batch_data = serde_json::to_vec(&ordered_txs).unwrap_or_default();
-        
+
         let mut hasher = Sha256::new();
         hasher.update(&batch_data);
         hasher.update(&self.current_block.to_be_bytes());
@@ -529,8 +522,11 @@ impl AegisTeeSequencer {
                 if let Some(asset) = self.asset_registry.get(asset_id) {
                     let mut metadata = HashMap::new();
                     metadata.insert("asset_type".to_string(), format!("{:?}", asset.asset_type));
-                    metadata.insert("chain_id".to_string(), asset.chain_id.map(|c| c.to_string()).unwrap_or_default());
-                    
+                    metadata.insert(
+                        "chain_id".to_string(),
+                        asset.chain_id.map(|c| c.to_string()).unwrap_or_default(),
+                    );
+
                     snapshots.push(AssetSnapshot {
                         asset_id: asset_id.clone(),
                         state: asset.encryption_key.clone(), // Encrypted state
@@ -586,10 +582,26 @@ impl AegisTeeSequencer {
     }
 
     /// Enable or disable Phala redundancy
-    pub fn set_phala_redundancy(&mut self, enabled: bool, worker_id: Option<String>, enclave_id: Option<String>) {
+    pub fn set_phala_redundancy(
+        &mut self,
+        enabled: bool,
+        worker_id: Option<String>,
+        enclave_id: Option<String>,
+    ) {
         self.phala_redundancy_enabled = enabled;
         self.phala_worker_id = worker_id;
         self.phala_enclave_id = enclave_id;
+    }
+
+    /// Get status information for API
+    pub fn get_status(&self) -> (String, String, usize, bool, bool) {
+        (
+            self.tee_platform.clone(),
+            self.enclave_id.clone(),
+            self.encrypted_mempool.len(),
+            !self.asset_registry.is_empty(),
+            self.phala_redundancy_enabled,
+        )
     }
 }
 
